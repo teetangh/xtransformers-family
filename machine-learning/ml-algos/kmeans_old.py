@@ -37,10 +37,10 @@ def main():
             if current_distance < nearest_distance:
                 nearest_cluster = cluster_centroids[j]
                 nearest_distance = current_distance
-                print(i,j)
+                print(i, j)
         labels.append(nearest_cluster)
-    print("labels" , labels)
-    
+    print("labels", labels)
+
     changed = False
     iteration = 0
 
@@ -53,19 +53,22 @@ def main():
                     centroid_new[0] += E[i][0]
                     centroid_new[1] += E[i][1]
                     cluster_vertices += 1
-            
+
             if cluster_vertices != 0:
                 centroid_new[0] /= cluster_vertices
                 centroid_new[1] /= cluster_vertices
                 # round(centroid_new[0],3 )
                 # round(centroid_new[1],3 )
-                cluster_centroids[j] = [centroid_new[0],centroid_new[1]]
-            print("iteration: ", iteration , "cluster_centroids",cluster_centroids)
-            iteration += 1        
-    
+                cluster_centroids[j] = [centroid_new[0], centroid_new[1]]
+            print("iteration: ", iteration,
+                  "cluster_centroids", cluster_centroids)
+            iteration += 1
+
             changed = True
         if changed == False or iteration > MaxIters:
             break
+
+
 if __name__ == "__main__":
     sys.stdin = open("kmeans_input.txt", "r")
     # sys.stdout = open("kmeans_output.txt", "w+")

@@ -1,0 +1,12 @@
+numpy
+pandas
+scikit-learn
+matplotlib
+keras
+tensorflow
+tensorflow-gpu
+torch
+torchvision
+torchaudio
+gym
+pyglet

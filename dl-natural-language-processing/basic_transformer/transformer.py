@@ -88,10 +88,10 @@ class InputEmbedding():
 
         return all_text
 
-    def get_word_embeddings(seflf):
+    def get_word_embeddings(self, tokenized_sentences):
         pass
 
-    def get_postition_encoding(self, all_text):
+    def get_postition_encoding(self, input_embeddings):
         pass
 
     def run(self):
@@ -99,9 +99,8 @@ class InputEmbedding():
         self.tokenized_sentences = [sentence.split()
                                     for sentence in self.cleaned_text]
         self.input_embeddings = get_word_embeddings(self.tokenized_sentences)
-
-        # self.position_encoded_text = get_position_encoding(
-        #     self.tokenized_sentences)
+        self.position_encoded_text = get_position_encoding(
+            self.tokenized_sentences)
 
 
 class ScaledDotProdcutAttention():

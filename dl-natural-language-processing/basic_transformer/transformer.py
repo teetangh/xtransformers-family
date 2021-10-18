@@ -7,7 +7,6 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 from nltk.corpus import stopwords
-from nltk.featstruct import substitute_bindings
 from nltk.stem.porter import PorterStemmer
 from nltk.tokenize import word_tokenize
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
@@ -43,9 +42,6 @@ class InputEmbedding():
                                    u"\U00002702-\U000027B0"
                                    u"\U000024C2-\U0001F251"
                                    "]+", flags=re.UNICODE)
-
-        temp = [abbreviation for abbreviation in self.ABBREVIATIONS]
-        print("temp ", temp)
 
         for text in lines:
             text = text.lower()  # convert to lower case
@@ -89,7 +85,7 @@ class InputEmbedding():
     def get_positional_embeddings(self, input_embeddings):
 
         positional_embeddings = np.zeros(
-            (self.CORPUS_SIZE + 1, self.EMBEDDINGS_DIMENSION + 1))
+            (self.CORPUS_SIZE, self.EMBEDDINGS_DIMENSION + 1))
 
         for position in range(self.CORPUS_SIZE):
             for i in range(0, self.EMBEDDINGS_DIMENSION, 2):
@@ -108,18 +104,15 @@ class InputEmbedding():
         self.cleaned_text = self.clean_text(self.input_corpus)
 
         # # TODO: remove highlight
-        # self.tokenized_sentences = [sentence.split()
-        #                             # for sentence in self.cleaned_text]
+        self.tokenized_sentences = [sentence.split()
+                                    for sentence in self.cleaned_text]
         #                             for sentence in self.input_corpus]
 
-        input_embeddings = self.get_word_embeddings(self.input_corpus)
-        # print("input embeddings")
-        # for i in range(10):
-        #     print(input_embeddings.toarray())
-
+        input_embeddings = self.get_word_embeddings(self.tokenized_sentences)
+        print(input_embeddings.toarray())
         positional_embedded_text = self.get_positional_embeddings(
             input_embeddings)
-        # print("\n positional_embedded_text \n", positional_embedded_text)
+        print("\n positional_embedded_text \n", positional_embedded_text)
 
         return positional_embedded_text
 
@@ -130,17 +123,42 @@ class LayerNormalisation():
         pass
 
 
-class ScaledDotProductAttention(tf.keras.layers):
+class ScaledDotProductAttentionLayer(tf.keras.layers.Layer):
+
+    def __init__(self, queries_vector,
+                 keys_vector,
+                 values_vector, name=None):
+        super(ScaledDotProductAttentionLayer, self).__init__(name=name)
+        self.queries_vector = queries_vector
+        self.keys_vector = keys_vector
+        self.values_vector = values_vector
+
+    def run(self):
+        pass
+
+
+class MultiHeadSelfAttentionLayer(tf.keras.layers.Layer):
 
     def __init__(self, name=None):
-        super(ScaledDotProductAttention, self).__init__(name=name)
+        super(MultiHeadSelfAttentionLayer, self).__init__(name=name)
+        self.vector_dimension = 64
+        self.queries_vector = Dense(units=self.vector_dimension,
+                                    activation="relu",
+                                    kernel_initializer="random_normal",
+                                    bias_initializer="random_normal")
+        self.keys_vector = Dense(units=self.vector_dimension,
+                                 activation="relu",
+                                 kernel_initializer="random_normal",
+                                 bias_initializer="random_normal")
+        self.values_vector = Dense(units=self.vector_dimension,
+                                   activation="relu",
+                                   kernel_initializer="random_normal",
+                                   bias_initializer="random_normal")
+        self.scaled_dot_product_attention = ScaledDotProductAttentionLayer(
+            self.queries_vector, self.keys_vector, self.values_vector)
 
-
-class MultiHeadAttention(tf.keras.layers):
-
-    def __init__(self, name=None):
-        super(MultiHeadAttention, self).__init__(name=name)
-        self.scaled_dot_product_attention = ScaledDotProductAttention()
+    def run(self):
+        pass
 
 
 # class MaskedMultiHeadAttention():
@@ -148,22 +166,28 @@ class MultiHeadAttention(tf.keras.layers):
 #         pass
 
 
-class EncoderBlock(tf.keras.layers):
+class EncoderBlock(tf.keras.layers.Layer):
     def __init__(self, name=None):
         super(EncoderBlock, self).__init__(name=name)
+        self.multihead_self_attention_layer = MultiHeadSelfAttentionLayer()
+
+    def run(self, encoder_input):
+        
+        for document_embeddings in encoder_input:
+            pass
 
 
-class DecoderBlock(tf.keras.layers):
+class DecoderBlock(tf.keras.layers.Layer):
     def __init__(self, name=None):
         super(DecoderBlock, self).__init__(name=name)
 
 
-class Encoder(tf.keras.layers):
+class Encoder(tf.keras.layers.Layer):
     def __init__(self, name=None):
         super(Encoder, self).__init__(name=name)
 
 
-class Decoder(tf.keras.layers):
+class Decoder(tf.keras.layers.Layer):
     def __init__(self, name=None):
         super(Decoder, self).__init__(name=name)
 
@@ -172,7 +196,6 @@ class Transformer(tf.keras.Model):
 
     def __init__(self):
         self.encoder = Encoder()
-        # self.encoder_2 = Encoder()
         self.decoder = Decoder()
 
 
@@ -187,7 +210,9 @@ def main():
     # TODO: remove harcode
     input_embeddings = InputEmbedding(corpus)
     encoder_input = input_embeddings.run()
-    # print(encoder_input)
+    # print(encoder_input.shape)
+    # for i in encoder_input:
+    #     print(i)
 
 
 if __name__ == "__main__":

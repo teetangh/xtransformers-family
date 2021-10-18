@@ -5,17 +5,18 @@ import string
 import nltk
 import numpy as np
 import pandas as pd
+import tensorflow as tf
 from nltk.corpus import stopwords
+from nltk.featstruct import substitute_bindings
 from nltk.stem.porter import PorterStemmer
 from nltk.tokenize import word_tokenize
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
+from tensorflow.keras.layers import Dense, Dropout
+
+from abbreviations import ABBREVIATIONS
 
 nltk.download('punkt')
 nltk.download('stopwords')
-
-
-#import tensorflow as tf
-#from tensorflow.keras.layers import Dense,Dropout
 
 
 class InputEmbedding():
@@ -24,6 +25,7 @@ class InputEmbedding():
         self.input_corpus = corpus
         self.CORPUS_SIZE = len(corpus)
         self.vectorizer = CountVectorizer()
+        self.ABBREVIATIONS = ABBREVIATIONS
 
     def clean_text(self, df):
         all_text = list()
@@ -42,31 +44,18 @@ class InputEmbedding():
                                    u"\U000024C2-\U0001F251"
                                    "]+", flags=re.UNICODE)
 
+        temp = [abbreviation for abbreviation in self.ABBREVIATIONS]
+        print("temp ", temp)
+
         for text in lines:
             text = text.lower()  # convert to lower case
             text = pattern.sub('', text)  # remove all the links
             text = emoji_pattern.sub(r"", text)
 
-            text = re.sub(r"i'm", "i am", text)
-            text = re.sub(r"he's", "he is", text)
-            text = re.sub(r"she's", "she is", text)
-            text = re.sub(r"that's", "that is", text)
-            text = re.sub(r"what's", "what is", text)
-            text = re.sub(r"where's", "where is", text)
-            text = re.sub(r"\'ll", " will", text)
-            text = re.sub(r"\'ve", " have", text)
-            text = re.sub(r"\'re", " are", text)
-            text = re.sub(r"\'d", " would", text)
-            text = re.sub(r"\'ve", " have", text)
-            text = re.sub(r"won't", "will not", text)
-            text = re.sub(r"don't", "do not", text)
-            text = re.sub(r"did't", "did not", text)
-            text = re.sub(r"can't", "can not", text)
-            text = re.sub(r"it's", "it is", text)
-            text = re.sub(r"couldn't", "could not", text)
-            text = re.sub(r"have't", "have not", text)
+            text = [re.sub(abbreviation[0], abbreviation[1], str(text))
+                    for abbreviation in self.ABBREVIATIONS]
 
-            text = re.sub(r"[,.\"!@#$%^&*(){}?/;`~:<>+=-]", "", text)
+            text = re.sub(r"[,.\"!@#$%^&*(){}?/;`~:<>+=-]", "", str(text))
 
             # tokenize over split return list rather than strings
             tokens = word_tokenize(text)
@@ -116,7 +105,7 @@ class InputEmbedding():
         return positional_embeddings
 
     def run(self):
-        # self.cleaned_text = self.clean_text(self.input_corpus)
+        self.cleaned_text = self.clean_text(self.input_corpus)
 
         # # TODO: remove highlight
         # self.tokenized_sentences = [sentence.split()
@@ -135,35 +124,56 @@ class InputEmbedding():
         return positional_embedded_text
 
 
-class ScaledDotProductAttention():
+class LayerNormalisation():
+
     def __init__(self):
         pass
 
 
-class MultiHeadAttention():
-    def __init__(self):
+class ScaledDotProductAttention(tf.keras.layers):
+
+    def __init__(self, name=None):
+        super(ScaledDotProductAttention, self).__init__(name=name)
+
+
+class MultiHeadAttention(tf.keras.layers):
+
+    def __init__(self, name=None):
+        super(MultiHeadAttention, self).__init__(name=name)
         self.scaled_dot_product_attention = ScaledDotProductAttention()
 
 
-class MaskedMultiHeadAttention():
+# class MaskedMultiHeadAttention():
+#     def __init__(self):
+#         pass
+
+
+class EncoderBlock(tf.keras.layers):
+    def __init__(self, name=None):
+        super(EncoderBlock, self).__init__(name=name)
+
+
+class DecoderBlock(tf.keras.layers):
+    def __init__(self, name=None):
+        super(DecoderBlock, self).__init__(name=name)
+
+
+class Encoder(tf.keras.layers):
+    def __init__(self, name=None):
+        super(Encoder, self).__init__(name=name)
+
+
+class Decoder(tf.keras.layers):
+    def __init__(self, name=None):
+        super(Decoder, self).__init__(name=name)
+
+
+class Transformer(tf.keras.Model):
+
     def __init__(self):
-        pass
-
-
-class Encoder():
-
-    def __init__(self, encoder_input):
-        self.encoder_input = encoder_input
-
-
-class Decoder():
-    def __init__(self):
-        pass
-
-
-class Transformer():
-    def __init__(self):
-        pass
+        self.encoder = Encoder()
+        # self.encoder_2 = Encoder()
+        self.decoder = Decoder()
 
 
 def main():

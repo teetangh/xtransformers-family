@@ -1,15 +1,15 @@
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.feature_extraction.text import CountVectorizer
-from nltk.stem.porter import PorterStemmer
-from nltk.corpus import stopwords
-from nltk.tokenize import word_tokenize
-import string
 import os
+import re
+import string
+
+import nltk
 import numpy as np
 import pandas as pd
+from nltk.corpus import stopwords
+from nltk.stem.porter import PorterStemmer
+from nltk.tokenize import word_tokenize
+from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 
-import re
-import nltk
 nltk.download('punkt')
 nltk.download('stopwords')
 
@@ -22,6 +22,8 @@ class InputEmbedding():
 
     def __init__(self, corpus):
         self.input_corpus = corpus
+        self.CORPUS_SIZE = len(corpus)
+        self.vectorizer = CountVectorizer()
 
     def clean_text(self, df):
         all_text = list()
@@ -89,28 +91,58 @@ class InputEmbedding():
         return all_text
 
     def get_word_embeddings(self, tokenized_sentences):
-        pass
+        sentence_vectors = self.vectorizer.fit_transform(
+            self.input_corpus)
+        # print(sentence_vectors.shape)
+        self.EMBEDDINGS_DIMENSION = sentence_vectors.shape[1]
+        return sentence_vectors
 
-    def get_postition_encoding(self, input_embeddings):
-        pass
+    def get_positional_embeddings(self, input_embeddings):
+
+        positional_embeddings = np.zeros(
+            (self.CORPUS_SIZE + 1, self.EMBEDDINGS_DIMENSION + 1))
+
+        for position in range(self.CORPUS_SIZE):
+            for i in range(0, self.EMBEDDINGS_DIMENSION, 2):
+                positional_embeddings[position, i] = (
+                    np.sin(position / (10000 ** ((2*i) / self.EMBEDDINGS_DIMENSION)))
+                )
+                positional_embeddings[position, i + 1] = (
+                    np.cos(
+                        position / (10000 ** ((2 * (i + 1)) / self.EMBEDDINGS_DIMENSION)))
+                )
+
+        # print(positional_embeddings.shape)
+        return positional_embeddings
 
     def run(self):
-        self.cleaned_text = self.clean_text(self.input_corpus)
-        self.tokenized_sentences = [sentence.split()
-                                    for sentence in self.cleaned_text]
-        self.input_embeddings = get_word_embeddings(self.tokenized_sentences)
-        self.position_encoded_text = get_position_encoding(
-            self.tokenized_sentences)
+        # self.cleaned_text = self.clean_text(self.input_corpus)
+
+        # # TODO: remove highlight
+        # self.tokenized_sentences = [sentence.split()
+        #                             # for sentence in self.cleaned_text]
+        #                             for sentence in self.input_corpus]
+
+        input_embeddings = self.get_word_embeddings(self.input_corpus)
+        # print("input embeddings")
+        # for i in range(10):
+        #     print(input_embeddings.toarray())
+
+        positional_embedded_text = self.get_positional_embeddings(
+            input_embeddings)
+        # print("\n positional_embedded_text \n", positional_embedded_text)
+
+        return positional_embedded_text
 
 
-class ScaledDotProdcutAttention():
+class ScaledDotProductAttention():
     def __init__(self):
         pass
 
 
 class MultiHeadAttention():
     def __init__(self):
-        pass
+        self.scaled_dot_product_attention = ScaledDotProductAttention()
 
 
 class MaskedMultiHeadAttention():
@@ -119,8 +151,9 @@ class MaskedMultiHeadAttention():
 
 
 class Encoder():
-    def __init__(self):
-        pass
+
+    def __init__(self, encoder_input):
+        self.encoder_input = encoder_input
 
 
 class Decoder():
@@ -138,12 +171,13 @@ def main():
     DIR_PATH = os.path.dirname(os.path.realpath(__file__))
     data = pd.read_csv(os.path.join(
         DIR_PATH, "data/rus.txt"), sep="\t", header=None)
-    data = data.iloc[:, 0:2]
+    data = data.iloc[:10000, 0:2]
     corpus = data[0].to_list()
 
+    # TODO: remove harcode
     input_embeddings = InputEmbedding(corpus)
-    input_embeddings.run()
-    print(input_embeddings.tokenized_sentences)
+    encoder_input = input_embeddings.run()
+    # print(encoder_input)
 
 
 if __name__ == "__main__":

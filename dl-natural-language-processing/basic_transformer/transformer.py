@@ -1,88 +1,60 @@
+import multiprocessing
 import os
 import re
 import string
+from codecs import encode
+from operator import pos
 
+import gensim.downloader as api
 import nltk
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+from gensim.models import Word2Vec
 from nltk.corpus import stopwords
 from nltk.stem.porter import PorterStemmer
 from nltk.tokenize import word_tokenize
+from nltk.util import pr
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
+from tensorflow.keras import layers
 from tensorflow.keras.layers import Dense, Dropout
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.python.keras.layers.embeddings import Embedding
+from tensorflow.python.ops.gen_array_ops import size
 
 from abbreviations import ABBREVIATIONS
+from preprocess_corpus import (clean_text, get_document_embeddings,
+                               load_nlp_libraries)
 
-nltk.download('punkt')
-nltk.download('stopwords')
 
-
-class InputEmbedding():
+class InputEmbedding(tf.keras.layers.Layer):
 
     def __init__(self, corpus):
         self.input_corpus = corpus
         self.CORPUS_SIZE = len(corpus)
-        self.vectorizer = CountVectorizer()
         self.ABBREVIATIONS = ABBREVIATIONS
+        self.EMBEDDINGS_DIMENSION = 300  # since word2vec # TODO: make generic later
 
-    def clean_text(self, df):
-        all_text = list()
-        lines = df
-        PS = PorterStemmer()  # Takes only the root words
-
-        pattern = re.compile(
-            'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+')
-
-        emoji_pattern = re.compile("["
-                                   u"\U0001F600-\U0001F64F"  # emoticons
-                                   u"\U0001F300-\U0001F5FF"  # symbols & pictographs
-                                   u"\U0001F680-\U0001F6FF"  # transport & map symbols
-                                   u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
-                                   u"\U00002702-\U000027B0"
-                                   u"\U000024C2-\U0001F251"
-                                   "]+", flags=re.UNICODE)
-
-        for text in lines:
-            text = text.lower()  # convert to lower case
-            text = pattern.sub('', text)  # remove all the links
-            text = emoji_pattern.sub(r"", text)
-
-            text = [re.sub(abbreviation[0], abbreviation[1], str(text))
-                    for abbreviation in self.ABBREVIATIONS]
-
-            text = re.sub(r"[,.\"!@#$%^&*(){}?/;`~:<>+=-]", "", str(text))
-
-            # tokenize over split return list rather than strings
-            tokens = word_tokenize(text)
-
-            # remove all the punctuations (safety)
-            table = str.maketrans('', '', string.punctuation)
-            stripped = [w.translate(table) for w in tokens]
-
-            # Remove everything that is not an alphabet
-            words = [word for word in stripped if word.isalpha()]
-
-            # Remove the stop words (set of words that do not provide meaningful information)
-            # stop_words = set(stopwords.words("english"))
-            # stop_words.discard("not")
-            # words = [w for w in words if not w in stop_words]
-
-            # Use Porter Stemmer to stem the words to root words (necessary for sentiment analysis and text processing)
-            # words = [PS.stem(w) for w in words if not w in stop_words]
-            words = ' '.join(words)  # join the tokens (make a string)
-            all_text.append(words)  # add it to the large list
-
-        return all_text
+    def tokenize_text(self,):
+        pass
 
     def get_word_embeddings(self, tokenized_sentences):
-        sentence_vectors = self.vectorizer.fit_transform(
-            self.input_corpus)
+        # sentence_vectors = self.vectorizer.fit_transform(
+        #     self.input_corpus)
         # print(sentence_vectors.shape)
-        self.EMBEDDINGS_DIMENSION = sentence_vectors.shape[1]
-        return sentence_vectors
+        # self.EMBEDDINGS_DIMENSION = sentence_vectors.shape[1]
 
-    def get_positional_embeddings(self, input_embeddings):
+        all_embeddings = []
+        for tokenized_sentence in tokenized_sentences:
+            sentence_embeddings = []
+            for token in tokenized_sentence:
+                sentence_embeddings.append(word2vec_model[token])
+            all_embeddings.append(sentence_embeddings)
+
+        return all_embeddings
+
+    def get_positional_embeddings(self):
 
         positional_embeddings = np.zeros(
             (self.CORPUS_SIZE, self.EMBEDDINGS_DIMENSION + 1))
@@ -98,23 +70,18 @@ class InputEmbedding():
                 )
 
         # print(positional_embeddings.shape)
-        return positional_embeddings
+        return tf.convert_to_tensor(positional_embeddings)
 
-    def run(self):
-        self.cleaned_text = self.clean_text(self.input_corpus)
-
+    def call(self):
         # # TODO: remove highlight
         self.tokenized_sentences = [sentence.split()
                                     for sentence in self.cleaned_text]
         #                             for sentence in self.input_corpus]
 
-        input_embeddings = self.get_word_embeddings(self.tokenized_sentences)
-        print(input_embeddings.toarray())
-        positional_embedded_text = self.get_positional_embeddings(
-            input_embeddings)
-        print("\n positional_embedded_text \n", positional_embedded_text)
+        # input_embeddings = self.get_word_embeddings(self.tokenized_sentences)
+        positional_embeddedings = self.get_positional_embeddings()
 
-        return positional_embedded_text
+        return np.add(input_embeddings, positional_embeddedings)
 
 
 class LayerNormalisation():
@@ -133,7 +100,7 @@ class ScaledDotProductAttentionLayer(tf.keras.layers.Layer):
         self.keys_vector = keys_vector
         self.values_vector = values_vector
 
-    def run(self):
+    def call(self):
         pass
 
 
@@ -157,7 +124,7 @@ class MultiHeadSelfAttentionLayer(tf.keras.layers.Layer):
         self.scaled_dot_product_attention = ScaledDotProductAttentionLayer(
             self.queries_vector, self.keys_vector, self.values_vector)
 
-    def run(self):
+    def call(self):
         pass
 
 
@@ -171,8 +138,8 @@ class EncoderBlock(tf.keras.layers.Layer):
         super(EncoderBlock, self).__init__(name=name)
         self.multihead_self_attention_layer = MultiHeadSelfAttentionLayer()
 
-    def run(self, encoder_input):
-        
+    def call(self, encoder_input):
+
         for document_embeddings in encoder_input:
             pass
 
@@ -200,20 +167,22 @@ class Transformer(tf.keras.Model):
 
 
 def main():
-    #EMBEDDING_DIR = ...
+    # Loading the Dataset
     DIR_PATH = os.path.dirname(os.path.realpath(__file__))
     data = pd.read_csv(os.path.join(
         DIR_PATH, "data/rus.txt"), sep="\t", header=None)
-    data = data.iloc[:10000, 0:2]
-    corpus = data[0].to_list()
+    data_subset = data.iloc[:10000, 0:2]
+
+    corpus = data_subset[0].to_list()
+    cleaned_corpus = clean_text(corpus)
+    encoded_docs = get_document_embeddings(cleaned_corpus)
 
     # TODO: remove harcode
-    input_embeddings = InputEmbedding(corpus)
-    encoder_input = input_embeddings.run()
-    # print(encoder_input.shape)
-    # for i in encoder_input:
-    #     print(i)
+
+    # input_embeddings = InputEmbedding(cleaned_corpus)
+    # encoder_input = input_embeddings.call()
 
 
 if __name__ == "__main__":
+
     main()

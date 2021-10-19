@@ -25,7 +25,7 @@ from tensorflow.python.ops.gen_array_ops import size
 
 from abbreviations import ABBREVIATIONS
 from preprocess_corpus import (clean_text, get_document_embeddings,
-                               load_nlp_libraries)
+                               load_nlp_libraries, pad_encoded_docs)
 
 
 class InputEmbedding(tf.keras.layers.Layer):
@@ -176,6 +176,7 @@ def main():
     corpus = data_subset[0].to_list()
     cleaned_corpus = clean_text(corpus)
     encoded_docs = get_document_embeddings(cleaned_corpus)
+    padded_encoded_docs = pad_encoded_docs(encoded_docs)
 
     # TODO: remove harcode
 

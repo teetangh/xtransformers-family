@@ -75,12 +75,12 @@ def clean_text(df):
     return cleaned_text
 
 
-def get_document_embeddings(cleaned_corpus):
+def get_document_embeddings(cleaned_corpus, EMBEDDING_SIZE=10):
     # Loading Word2Vec
+    # TODO: Use 
     # EMBEDDING_DIR = ...
     NUM_CORES = multiprocessing.cpu_count()
-    EMBEDDING_SIZE = 10
-    MAX_LENGTH = 10
+
     w2v_model = None
     model_path = f"models/word2vec.model"
 
@@ -103,12 +103,17 @@ def get_document_embeddings(cleaned_corpus):
     encoded_docs = [[w2v_model.wv[word] for word in post]
                     for post in cleaned_corpus]
 
+    return encoded_docs
+
+
+def pad_encoded_docs(encoded_docs, MAX_LENGTH=10):
     padded_posts = []
     for post in encoded_docs:
         # Pad short posts with alternating min/max
 
+        # TODO: Find a better approach
         if len(post) == 0:
-            pass
+            post = [0] * MAX_LENGTH
 
         if len(post) < MAX_LENGTH:
 

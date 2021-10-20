@@ -1,31 +1,15 @@
-import multiprocessing
-import os
-import re
-import string
 from codecs import encode
-from operator import pos
+import os
 
-import gensim.downloader as api
-import nltk
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-from gensim.models import Word2Vec
-from nltk.corpus import stopwords
-from nltk.stem.porter import PorterStemmer
-from nltk.tokenize import word_tokenize
-from nltk.util import pr
-from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from tensorflow.keras import layers
 from tensorflow.keras.layers import Dense, Dropout
-from tensorflow.keras.preprocessing.sequence import pad_sequences
-from tensorflow.keras.preprocessing.text import Tokenizer
-from tensorflow.python.keras.layers.embeddings import Embedding
-from tensorflow.python.ops.gen_array_ops import size
 
 from abbreviations import ABBREVIATIONS
 from preprocess_corpus import (clean_text, get_document_embeddings,
-                               load_nlp_libraries, pad_encoded_docs)
+                               pad_encoded_docs)
 
 
 class InputEmbedding(tf.keras.layers.Layer):
@@ -166,17 +150,22 @@ class Transformer(tf.keras.Model):
         self.decoder = Decoder()
 
 
+def debug(output):
+    DIR_PATH=os.path.dirname(os.path.realpath(__file__))
+    print(output, file=open(os.path.join(DIR_PATH, "log/output.txt"), "w+"))
+
 def main():
     # Loading the Dataset
-    DIR_PATH = os.path.dirname(os.path.realpath(__file__))
-    data = pd.read_csv(os.path.join(
+    DIR_PATH=os.path.dirname(os.path.realpath(__file__))
+    data=pd.read_csv(os.path.join(
         DIR_PATH, "data/rus.txt"), sep="\t", header=None)
-    data_subset = data.iloc[:10000, 0:2]
+    data_subset=data.iloc[:10000, 0:2]
 
-    corpus = data_subset[0].to_list()
-    cleaned_corpus = clean_text(corpus)
-    encoded_docs = get_document_embeddings(cleaned_corpus)
-    padded_encoded_docs = pad_encoded_docs(encoded_docs)
+    corpus=data_subset[0].to_list()
+    cleaned_corpus=clean_text(corpus)
+    encoded_docs=get_document_embeddings(cleaned_corpus,512)
+    print(encoded_docs)
+    padded_encoded_docs=pad_encoded_docs(encoded_docs)
 
     # TODO: remove harcode
 

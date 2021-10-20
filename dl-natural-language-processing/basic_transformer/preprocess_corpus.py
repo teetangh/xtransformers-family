@@ -20,7 +20,8 @@ from abbreviations import ABBREVIATIONS
 def load_nlp_libraries():
     nltk.download('punkt')
     nltk.download('stopwords')
-    print("loaded stop words")
+    print("loaded nltk libraries")
+
     word2vec_model = api.load("word2vec-google-news-300")
     print("loaded word2vec")
 
@@ -75,9 +76,9 @@ def clean_text(df):
     return cleaned_text
 
 
-def get_document_embeddings(cleaned_corpus, EMBEDDING_SIZE=10):
+def get_document_embeddings(cleaned_corpus, EMBEDDING_SIZE=512):
     # Loading Word2Vec
-    # TODO: Use 
+    # TODO: Use
     # EMBEDDING_DIR = ...
     NUM_CORES = multiprocessing.cpu_count()
 
@@ -97,11 +98,35 @@ def get_document_embeddings(cleaned_corpus, EMBEDDING_SIZE=10):
             seed=1337
         )
 
+    # DEBUG
+    rock_idx = w2v_model.wv.key_to_index[cleaned_corpus[0][0]]
+    rock_cnt = w2v_model.wv.get_vecattr(cleaned_corpus[0][0], "count")  # 👍
+    vocab_len = len(w2v_model.wv)  # 👍
+
+    # Print all the vord vectors
+    print(w2v_model.wv.vectors.shape)
+    print(rock_idx, rock_cnt, vocab_len)
+
     # w2v_model.wv.most_similar(positive="program")
     # encoded_docs is a 3d list
     # TODO: (if some lists are empty that's a problem in embedding )
-    encoded_docs = [[w2v_model.wv[word] for word in post]
-                    for post in cleaned_corpus]
+    # encoded_docs = [[w2v_model.wv[word]
+    #                  if word in w2v_model.wv
+    #                  else handle_misspellings_and_oov_words(w2v_model, word)
+    #                  for word in post]
+    #                 for post in cleaned_corpus]
+
+    encoded_docs = []
+    for post in cleaned_corpus:
+        encoded_doc = []
+        for word in post:
+            if word in w2v_model.wv:
+                encoded_doc.append(w2v_model.wv[word])
+            else:
+                pass
+                encoded_doc.append(
+                    handle_misspellings_and_oov_words(w2v_model, word))
+        encoded_docs.append(encoded_doc)
 
     return encoded_docs
 
@@ -133,8 +158,24 @@ def pad_encoded_docs(encoded_docs, MAX_LENGTH=10):
         if len(post) > MAX_LENGTH:
             post = post[:MAX_LENGTH]
 
-        print(post)
         # Add the post to our new list of padded posts
         padded_posts.append(post)
 
     return padded_posts
+
+
+def handle_misspellings_and_oov_words(w2v_model, misspelt_word):
+    print("misspelt word is ", misspelt_word)
+    top10_most_similar = w2v_model.wv.most_similar(misspelt_word, topn=10)
+
+    sum_vec = (w2v_model[top10_most_similar[0][0]]-w2v_model[misspelt_word])
+
+    for i in range(1, len(top10_most_similar)):
+        sum_vec += (w2v_model[top10_most_similar[0][0]] -
+                    w2v_model[top10_most_similar[i][0]])
+
+    translation_vec = sum_vec / 10
+
+    real_word = w2v_model[misspelt_word] + translation_vec
+
+    return real_word

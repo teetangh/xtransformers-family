@@ -128,11 +128,12 @@ def get_document_embeddings(cleaned_corpus, EMBEDDINGS_DIMENSION=512):
     # w2v_model.wv.most_similar(positive="program")
     # encoded_docs is a 3d list
     # TODO: (if some lists are empty that's a problem in embedding )
+    print("Encoding the docs...")
     encoded_docs = [[w2v_model.wv[word]
                      if word in w2v_model.wv
                      else handle_misspellings_and_oov_words(w2v_model, word)
                      for word in post]
-                    for post in cleaned_corpus]
+                    for post in tqdm(cleaned_corpus)]
 
     # encoded_docs = []
     # for post in cleaned_corpus:
@@ -149,14 +150,14 @@ def get_document_embeddings(cleaned_corpus, EMBEDDINGS_DIMENSION=512):
     return encoded_docs
 
 
-def pad_encoded_docs(encoded_docs, MAX_SENTENCE_LENGTH=100):
+def pad_encoded_docs(encoded_docs, EMBEDDINGS_DIMENSION=512, MAX_SENTENCE_LENGTH=100):
     padded_posts = []
     for post in tqdm(encoded_docs):
         # Pad short posts with alternating min/max
 
         # TODO: Find a better approach
         if len(post) == 0:
-            post = [0] * MAX_SENTENCE_LENGTH
+            post = [[0] * EMBEDDINGS_DIMENSION]
 
         if len(post) < MAX_SENTENCE_LENGTH:
 

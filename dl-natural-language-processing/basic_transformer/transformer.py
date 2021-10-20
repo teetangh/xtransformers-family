@@ -1,49 +1,37 @@
-from codecs import encode
 import os
+from typing_extensions import final
 
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+import tqdm
+from nltk.corpus.reader.bracket_parse import EMPTY_BRACKETS
+from numpy.core.fromnumeric import trace
 from tensorflow.keras import layers
 from tensorflow.keras.layers import Dense, Dropout
+from tqdm import trange, tqdm
 
 from abbreviations import ABBREVIATIONS
 from preprocess_corpus import (clean_text, get_document_embeddings,
                                pad_encoded_docs)
 
 
-class InputEmbedding(tf.keras.layers.Layer):
+class InputEmbedding():
 
-    def __init__(self, corpus):
-        self.input_corpus = corpus
-        self.CORPUS_SIZE = len(corpus)
+    def __init__(self, padded_encoded_docs, MAX_SENTENCE_LENGTH=100, EMBEDDINGS_DIMENSION=512):
+        self.padded_encoded_docs = padded_encoded_docs
+        self.CORPUS_SIZE = len(padded_encoded_docs)
         self.ABBREVIATIONS = ABBREVIATIONS
-        self.EMBEDDINGS_DIMENSION = 300  # since word2vec # TODO: make generic later
-
-    def tokenize_text(self,):
-        pass
-
-    def get_word_embeddings(self, tokenized_sentences):
-        # sentence_vectors = self.vectorizer.fit_transform(
-        #     self.input_corpus)
-        # print(sentence_vectors.shape)
-        # self.EMBEDDINGS_DIMENSION = sentence_vectors.shape[1]
-
-        all_embeddings = []
-        for tokenized_sentence in tokenized_sentences:
-            sentence_embeddings = []
-            for token in tokenized_sentence:
-                sentence_embeddings.append(word2vec_model[token])
-            all_embeddings.append(sentence_embeddings)
-
-        return all_embeddings
+        # since word2vec # TODO: make generic later
+        self.MAX_SENTENCE_LENGTH = MAX_SENTENCE_LENGTH
+        self.EMBEDDINGS_DIMENSION = EMBEDDINGS_DIMENSION
 
     def get_positional_embeddings(self):
 
         positional_embeddings = np.zeros(
-            (self.CORPUS_SIZE, self.EMBEDDINGS_DIMENSION + 1))
+            (self.MAX_SENTENCE_LENGTH, self.EMBEDDINGS_DIMENSION))
 
-        for position in range(self.CORPUS_SIZE):
+        for position in trange(self.MAX_SENTENCE_LENGTH):
             for i in range(0, self.EMBEDDINGS_DIMENSION, 2):
                 positional_embeddings[position, i] = (
                     np.sin(position / (10000 ** ((2*i) / self.EMBEDDINGS_DIMENSION)))
@@ -57,15 +45,13 @@ class InputEmbedding(tf.keras.layers.Layer):
         return tf.convert_to_tensor(positional_embeddings)
 
     def call(self):
-        # # TODO: remove highlight
-        self.tokenized_sentences = [sentence.split()
-                                    for sentence in self.cleaned_text]
-        #                             for sentence in self.input_corpus]
+        print("Adding Positional Embeddings...")
 
-        # input_embeddings = self.get_word_embeddings(self.tokenized_sentences)
-        positional_embeddedings = self.get_positional_embeddings()
-
-        return np.add(input_embeddings, positional_embeddedings)
+        document_positional_embeddedings = self.get_positional_embeddings()
+        final_embeddings = []
+        for doc in tqdm(self.padded_encoded_docs):
+            final_embeddings.append(doc + document_positional_embeddedings)
+        return final_embeddings
 
 
 class LayerNormalisation():
@@ -151,28 +137,52 @@ class Transformer(tf.keras.Model):
 
 
 def debug(output):
-    DIR_PATH=os.path.dirname(os.path.realpath(__file__))
-    print(output, file=open(os.path.join(DIR_PATH, "log/output.txt"), "w+"))
+    DIR_PATH = os.path.dirname(os.path.realpath(__file__))
+    print(output, end="\n\n\n\n\n\n", file=open(
+        os.path.join(DIR_PATH, "log/output.txt"), "a+"))
+
 
 def main():
     # Loading the Dataset
-    DIR_PATH=os.path.dirname(os.path.realpath(__file__))
-    data=pd.read_csv(os.path.join(
-        DIR_PATH, "data/rus.txt"), sep="\t", header=None)
-    data_subset=data.iloc[:10000, 0:2]
+    DIR_PATH = os.path.dirname(os.path.realpath(__file__))
+    EMBEDDINGS_DIMENSION = 512
+    MAX_SENTENCE_LENGTH = 100
 
-    corpus=data_subset[0].to_list()
-    cleaned_corpus=clean_text(corpus)
-    encoded_docs=get_document_embeddings(cleaned_corpus,512)
-    print(encoded_docs)
-    padded_encoded_docs=pad_encoded_docs(encoded_docs)
+    data = pd.read_csv(os.path.join(
+        DIR_PATH, "data/rus.txt"), sep="\t", header=None)
+    data_subset = data.iloc[:10000, 0:2]
+    corpus = data_subset[0].to_list()
+
+    print("Cleaning Corpus...")
+    cleaned_corpus = clean_text(corpus)
+
+    print("Fetching Document Embeddings...")
+    encoded_docs = get_document_embeddings(
+        cleaned_corpus, EMBEDDINGS_DIMENSION)
+
+    print("Padding Document Embeddings...")
+    padded_encoded_docs = pad_encoded_docs(encoded_docs, MAX_SENTENCE_LENGTH)
+
+    # for i in padded_encoded_docs:
+    #     shapes = []
+    #     for j in i:
+    #         shapes.append(len(i))
+    #     debug(shapes)
 
     # TODO: remove harcode
 
-    # input_embeddings = InputEmbedding(cleaned_corpus)
-    # encoder_input = input_embeddings.call()
+    print(len(padded_encoded_docs))
+    print(len(padded_encoded_docs[0]))
+    print(len(padded_encoded_docs[0][0]))
+
+    input_embeddings = InputEmbedding(
+        padded_encoded_docs, MAX_SENTENCE_LENGTH, EMBEDDINGS_DIMENSION)
+    encoder_input = input_embeddings.call()
 
 
 if __name__ == "__main__":
-
+    os.environ['TF_XLA_FLAGS'] = '--tf_xla_enable_xla_devices'
+    # print("GPUs: ", len(tf.config.experimental.list_physical_devices('GPU')))
+    # gpus = tf.config.experimental.list_physical_devices("GPU")
+    # tf.config.experimental.set_memory_growth(gpus[0], True)
     main()

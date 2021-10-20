@@ -13,6 +13,7 @@ from nltk.corpus import stopwords
 from nltk.stem.porter import PorterStemmer
 from nltk.tokenize import word_tokenize
 from nltk.util import pr
+from tqdm import trange,tqdm
 
 from abbreviations import ABBREVIATIONS
 
@@ -43,7 +44,7 @@ def clean_text(df):
                                u"\U000024C2-\U0001F251"
                                "]+", flags=re.UNICODE)
 
-    for text in lines:
+    for text in tqdm(lines):
         text = text.lower()  # convert to lower case
         text = pattern.sub('', text)  # remove all the links
         text = emoji_pattern.sub(r"", text)
@@ -76,7 +77,7 @@ def clean_text(df):
     return cleaned_text
 
 
-def get_document_embeddings(cleaned_corpus, EMBEDDING_SIZE=512):
+def get_document_embeddings(cleaned_corpus, EMBEDDINGS_DIMENSION=512):
     # Loading Word2Vec
     # TODO: Use
     # EMBEDDING_DIR = ...
@@ -91,7 +92,7 @@ def get_document_embeddings(cleaned_corpus, EMBEDDING_SIZE=512):
     else:
         w2v_model = Word2Vec(
             sentences=cleaned_corpus,
-            vector_size=EMBEDDING_SIZE,
+            vector_size=EMBEDDINGS_DIMENSION,
             min_count=1,
             window=5,
             workers=NUM_CORES,
@@ -123,7 +124,6 @@ def get_document_embeddings(cleaned_corpus, EMBEDDING_SIZE=512):
             if word in w2v_model.wv:
                 encoded_doc.append(w2v_model.wv[word])
             else:
-                pass
                 encoded_doc.append(
                     handle_misspellings_and_oov_words(w2v_model, word))
         encoded_docs.append(encoded_doc)
@@ -131,9 +131,9 @@ def get_document_embeddings(cleaned_corpus, EMBEDDING_SIZE=512):
     return encoded_docs
 
 
-def pad_encoded_docs(encoded_docs, MAX_LENGTH=10):
+def pad_encoded_docs(encoded_docs, MAX_LENGTH=100):
     padded_posts = []
-    for post in encoded_docs:
+    for post in tqdm(encoded_docs):
         # Pad short posts with alternating min/max
 
         # TODO: Find a better approach
@@ -170,7 +170,7 @@ def handle_misspellings_and_oov_words(w2v_model, misspelt_word):
 
     sum_vec = (w2v_model[top10_most_similar[0][0]]-w2v_model[misspelt_word])
 
-    for i in range(1, len(top10_most_similar)):
+    for i in trange(1, len(top10_most_similar)):
         sum_vec += (w2v_model[top10_most_similar[0][0]] -
                     w2v_model[top10_most_similar[i][0]])
 

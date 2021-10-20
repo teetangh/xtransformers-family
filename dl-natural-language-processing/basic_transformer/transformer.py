@@ -1,15 +1,12 @@
 import os
-from typing_extensions import final
 
 import numpy as np
 import pandas as pd
 import tensorflow as tf
 import tqdm
-from nltk.corpus.reader.bracket_parse import EMPTY_BRACKETS
-from numpy.core.fromnumeric import trace
 from tensorflow.keras import layers
 from tensorflow.keras.layers import Dense, Dropout
-from tqdm import trange, tqdm
+from tqdm import tqdm, trange
 
 from abbreviations import ABBREVIATIONS
 from preprocess_corpus import (clean_text, get_document_embeddings,
@@ -25,9 +22,10 @@ class InputEmbedding():
         # since word2vec # TODO: make generic later
         self.MAX_SENTENCE_LENGTH = MAX_SENTENCE_LENGTH
         self.EMBEDDINGS_DIMENSION = EMBEDDINGS_DIMENSION
+        self.document_positional_embeddedings = self.get_positional_embeddings()
 
     def get_positional_embeddings(self):
-
+        print("Calculating Positional Embeddings...")
         positional_embeddings = np.zeros(
             (self.MAX_SENTENCE_LENGTH, self.EMBEDDINGS_DIMENSION))
 
@@ -47,11 +45,28 @@ class InputEmbedding():
     def call(self):
         print("Adding Positional Embeddings...")
 
-        document_positional_embeddedings = self.get_positional_embeddings()
         final_embeddings = []
+
+        print(len(self.padded_encoded_docs))
+        print(len(self.padded_encoded_docs[0]))
+        print(len(self.padded_encoded_docs[0][0]))
+
+        # print(len(document_positional_embeddedings))
+        # print(len(document_positional_embeddedings[0]))
+        # print(len(document_positional_embeddedings[0][0]))
+
         for doc in tqdm(self.padded_encoded_docs):
-            final_embeddings.append(doc + document_positional_embeddedings)
-        return final_embeddings
+            np.add(np.asmatrix(doc), np.mat(
+                self.document_positional_embeddedings))
+
+        # for doc in tqdm(self.padded_encoded_docs):
+        #     final_embedding = []
+        #     for embedding in tqdm(self.document_positional_embeddedings):
+        #         print("len(doc) ", len(doc))
+        #         print("len(embedding) ", len(embedding))
+        #         final_embedding.append(np.sum([doc, embedding], axis=0))
+        #     final_embeddings.append(final_embedding)
+        # return final_embeddings
 
 
 class LayerNormalisation():

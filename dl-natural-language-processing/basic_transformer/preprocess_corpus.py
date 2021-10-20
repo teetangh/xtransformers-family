@@ -12,8 +12,8 @@ from gensim.models import Word2Vec
 from nltk.corpus import stopwords
 from nltk.stem.porter import PorterStemmer
 from nltk.tokenize import word_tokenize
-from nltk.util import pr
-from tqdm import trange,tqdm
+from tensorflow.python.keras.backend import dtype
+from tqdm import tqdm, trange
 
 from abbreviations import ABBREVIATIONS
 
@@ -77,6 +77,23 @@ def clean_text(df):
     return cleaned_text
 
 
+def handle_misspellings_and_oov_words(w2v_model, misspelt_word):
+    print("misspelt word is ", misspelt_word)
+    top10_most_similar = w2v_model.wv.most_similar(misspelt_word, topn=10)
+
+    sum_vec = (w2v_model[top10_most_similar[0][0]]-w2v_model[misspelt_word])
+
+    for i in trange(1, len(top10_most_similar)):
+        sum_vec += (w2v_model[top10_most_similar[0][0]] -
+                    w2v_model[top10_most_similar[i][0]])
+
+    translation_vec = sum_vec / 10
+
+    real_word = w2v_model[misspelt_word] + translation_vec
+
+    return real_word
+
+
 def get_document_embeddings(cleaned_corpus, EMBEDDINGS_DIMENSION=512):
     # Loading Word2Vec
     # TODO: Use
@@ -100,13 +117,13 @@ def get_document_embeddings(cleaned_corpus, EMBEDDINGS_DIMENSION=512):
         )
 
     # DEBUG
-    rock_idx = w2v_model.wv.key_to_index[cleaned_corpus[0][0]]
-    rock_cnt = w2v_model.wv.get_vecattr(cleaned_corpus[0][0], "count")  # 👍
+    temp_idx = w2v_model.wv.key_to_index[cleaned_corpus[0][0]]
+    temp_cnt = w2v_model.wv.get_vecattr(cleaned_corpus[0][0], "count")  # 👍
     vocab_len = len(w2v_model.wv)  # 👍
 
     # Print all the vord vectors
     print(w2v_model.wv.vectors.shape)
-    print(rock_idx, rock_cnt, vocab_len)
+    print(temp_idx, temp_cnt, vocab_len)
 
     # w2v_model.wv.most_similar(positive="program")
     # encoded_docs is a 3d list
@@ -126,21 +143,22 @@ def get_document_embeddings(cleaned_corpus, EMBEDDINGS_DIMENSION=512):
             else:
                 encoded_doc.append(
                     handle_misspellings_and_oov_words(w2v_model, word))
-        encoded_docs.append(encoded_doc)
+        encoded_docs.append(np.array(encoded_doc))
 
+    # Still a ragged array and not a perfect 2d array
     return encoded_docs
 
 
-def pad_encoded_docs(encoded_docs, MAX_LENGTH=100):
+def pad_encoded_docs(encoded_docs, MAX_SENTENCE_LENGTH=100):
     padded_posts = []
     for post in tqdm(encoded_docs):
         # Pad short posts with alternating min/max
 
         # TODO: Find a better approach
         if len(post) == 0:
-            post = [0] * MAX_LENGTH
+            post = [0] * MAX_SENTENCE_LENGTH
 
-        if len(post) < MAX_LENGTH:
+        if len(post) < MAX_SENTENCE_LENGTH:
 
             # Method 1
             pointwise_min = np.minimum.reduce(post)
@@ -148,34 +166,24 @@ def pad_encoded_docs(encoded_docs, MAX_LENGTH=100):
             padding = [pointwise_max, pointwise_min]
 
             # Method 2
-            pointwise_avg = np.mean(post)
-            padding = [pointwise_avg]
+            # pointwise_avg = np.mean(post)
+            # padding = [pointwise_avg]
 
-            # print(post)
-            post += padding * int(np.ceil((MAX_LENGTH - len(post) / 2.0)))
+            print("padding) ", len(padding))
+            print("padding[0]) ", len(padding[0]))
+            post += padding * \
+                int(np.ceil((MAX_SENTENCE_LENGTH - len(post) / 2.0)))
 
         # Shorten long posts or those odd number length posts we padded to 51
-        if len(post) > MAX_LENGTH:
-            post = post[:MAX_LENGTH]
+        if len(post) > MAX_SENTENCE_LENGTH:
+            post = post[:MAX_SENTENCE_LENGTH]
 
         # Add the post to our new list of padded posts
-        padded_posts.append(post)
+        padded_posts.append(np.array(post))
 
-    return padded_posts
+    print("len(padded_posts) ", len(padded_posts))
+    print("len(padded_posts[0]) ", len(padded_posts[0]))
+    print("len(padded_posts[0][0]) ", len(padded_posts[0][0]))
 
-
-def handle_misspellings_and_oov_words(w2v_model, misspelt_word):
-    print("misspelt word is ", misspelt_word)
-    top10_most_similar = w2v_model.wv.most_similar(misspelt_word, topn=10)
-
-    sum_vec = (w2v_model[top10_most_similar[0][0]]-w2v_model[misspelt_word])
-
-    for i in trange(1, len(top10_most_similar)):
-        sum_vec += (w2v_model[top10_most_similar[0][0]] -
-                    w2v_model[top10_most_similar[i][0]])
-
-    translation_vec = sum_vec / 10
-
-    real_word = w2v_model[misspelt_word] + translation_vec
-
-    return real_word
+    # return padded_posts
+    return np.mat(padded_posts, dtype=np.dtype('float64'))

@@ -66,7 +66,7 @@ class InputEmbedding():
         #         print("len(embedding) ", len(embedding))
         #         final_embedding.append(np.sum([doc, embedding], axis=0))
         #     final_embeddings.append(final_embedding)
-        # return final_embeddings
+        return final_embeddings
 
 
 class LayerNormalisation():
@@ -165,7 +165,7 @@ def main():
 
     data = pd.read_csv(os.path.join(
         DIR_PATH, "data/rus.txt"), sep="\t", header=None)
-    data_subset = data.iloc[:10000, 0:2]
+    data_subset = data.iloc[:10, 0:2]
     corpus = data_subset[0].to_list()
 
     print("Cleaning Corpus...")
@@ -176,23 +176,26 @@ def main():
         cleaned_corpus, EMBEDDINGS_DIMENSION)
 
     print("Padding Document Embeddings...")
-    padded_encoded_docs = pad_encoded_docs(encoded_docs, MAX_SENTENCE_LENGTH)
+    # padded_encoded_docs = pad_encoded_docs(encoded_docs, MAX_SENTENCE_LENGTH)
+    padded_encoded_docs = pad_encoded_docs(
+        encoded_docs,  MAX_SENTENCE_LENGTH)
 
-    # for i in padded_encoded_docs:
-    #     shapes = []
-    #     for j in i:
-    #         shapes.append(len(i))
-    #     debug(shapes)
+    for i in padded_encoded_docs:
+        shapes = []
+        for j in i:
+            shapes.append(len(i))
+        debug(shapes)
 
     # TODO: remove harcode
 
-    print(len(padded_encoded_docs))
-    print(len(padded_encoded_docs[0]))
-    print(len(padded_encoded_docs[0][0]))
 
     input_embeddings = InputEmbedding(
         padded_encoded_docs, MAX_SENTENCE_LENGTH, EMBEDDINGS_DIMENSION)
     encoder_input = input_embeddings.call()
+
+    debug(len(padded_encoded_docs))
+    debug(len(padded_encoded_docs[0]))
+    debug(len(padded_encoded_docs[0][0]))
 
 
 if __name__ == "__main__":

@@ -128,22 +128,22 @@ def get_document_embeddings(cleaned_corpus, EMBEDDINGS_DIMENSION=512):
     # w2v_model.wv.most_similar(positive="program")
     # encoded_docs is a 3d list
     # TODO: (if some lists are empty that's a problem in embedding )
-    # encoded_docs = [[w2v_model.wv[word]
-    #                  if word in w2v_model.wv
-    #                  else handle_misspellings_and_oov_words(w2v_model, word)
-    #                  for word in post]
-    #                 for post in cleaned_corpus]
+    encoded_docs = [[w2v_model.wv[word]
+                     if word in w2v_model.wv
+                     else handle_misspellings_and_oov_words(w2v_model, word)
+                     for word in post]
+                    for post in cleaned_corpus]
 
-    encoded_docs = []
-    for post in cleaned_corpus:
-        encoded_doc = []
-        for word in post:
-            if word in w2v_model.wv:
-                encoded_doc.append(w2v_model.wv[word])
-            else:
-                encoded_doc.append(
-                    handle_misspellings_and_oov_words(w2v_model, word))
-        encoded_docs.append(np.array(encoded_doc))
+    # encoded_docs = []
+    # for post in cleaned_corpus:
+    #     encoded_doc = []
+    #     for word in post:
+    #         if word in w2v_model.wv:
+    #             encoded_doc.append(w2v_model.wv[word])
+    #         else:
+    #             encoded_doc.append(
+    #                 handle_misspellings_and_oov_words(w2v_model, word))
+    #     encoded_docs.append(np.array(encoded_doc))
 
     # Still a ragged array and not a perfect 2d array
     return encoded_docs
@@ -169,8 +169,6 @@ def pad_encoded_docs(encoded_docs, MAX_SENTENCE_LENGTH=100):
             # pointwise_avg = np.mean(post)
             # padding = [pointwise_avg]
 
-            print("padding) ", len(padding))
-            print("padding[0]) ", len(padding[0]))
             post += padding * \
                 int(np.ceil((MAX_SENTENCE_LENGTH - len(post) / 2.0)))
 
@@ -181,9 +179,5 @@ def pad_encoded_docs(encoded_docs, MAX_SENTENCE_LENGTH=100):
         # Add the post to our new list of padded posts
         padded_posts.append(np.array(post))
 
-    print("len(padded_posts) ", len(padded_posts))
-    print("len(padded_posts[0]) ", len(padded_posts[0]))
-    print("len(padded_posts[0][0]) ", len(padded_posts[0][0]))
-
     # return padded_posts
-    return np.mat(padded_posts, dtype=np.dtype('float64'))
+    return padded_posts

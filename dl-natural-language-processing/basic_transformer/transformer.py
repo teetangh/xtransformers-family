@@ -5,7 +5,7 @@ import pandas as pd
 import tensorflow as tf
 import tqdm
 from tensorflow.keras import layers
-from tensorflow.keras.layers import Dense, Dropout
+from tensorflow.keras.layers import Dense, Dropout, Mul
 from tqdm import tqdm, trange
 
 from abbreviations import ABBREVIATIONS
@@ -52,6 +52,8 @@ class InputEmbedding():
                 np.array(np.add(doc, self.document_positional_embeddedings)))
         return final_embeddings
 
+#####################################################
+
 
 class LayerNormalisation():
 
@@ -72,17 +74,36 @@ class Linear(tf.keras.layers.Layer):
         return tf.matmul(inputs, self.w) + self.b
 
 
+class MyDenseLayer(tf.keras.layers.Layer):
+    def __init__(self, num_outputs, name=None):
+        super(MyDenseLayer, self).__init__(name=name)
+        self.num_outputs = num_outputs
+
+    def build(self, input_shape):
+        self.kernel = self.add_weight(name="kernel",
+                                      shape=(self.input_shape,
+                                             self.num_outputs),
+                                      )
+
+    def call(self, inputs):
+        return tf.matmul(inputs, self.kernel)
+
+#####################################################
+
+
 class ScaledDotProductAttentionLayer(tf.keras.layers.Layer):
 
-    def __init__(self, queries_vector,
-                 keys_vector,
-                 values_vector, name=None):
+    def __init__(self, name=None):
         super(ScaledDotProductAttentionLayer, self).__init__(name=name)
-        self.queries_vector = queries_vector
-        self.keys_vector = keys_vector
-        self.values_vector = values_vector
+        # self.queries_vector = queries_vector
+        # self.keys_vector = keys_vector
+        # self.values_vector = values_vector
+        self.mul1 = tf.matmul()
 
-    def call(self):
+    def call(self, queries_matrix, keys_matrix):
+        queries_keysT_product = tf.matmul(
+            a=queries_matrix, b=keys_matrix, transpose_b=True)
+
         pass
 
 
@@ -90,15 +111,21 @@ class MultiHeadSelfAttentionLayer(tf.keras.layers.Layer):
 
     def __init__(self, name=None):
         super(MultiHeadSelfAttentionLayer, self).__init__(name=name)
-        self.linear_queries = Linear(name="linear_queries")
-        self.linear_keys = Linear(name="linear_keys")
-        self.linear_values = Linear(name="linear_values")
+        self.linear_queries = MyDenseLayer(name="linear_queries")
+        self.linear_keys = MyDenseLayer(name="linear_keys")
+        self.linear_values = MyDenseLayer(name="linear_values")
 
-        self.scaled_dot_product_attention = ScaledDotProductAttentionLayer(
-            self.queries_vector, self.keys_vector, self.values_vector)
+        self.scaled_dot_product_attention = ScaledDotProductAttentionLayer()
 
-    def call(self):
-        pass
+    def call(self, doc_embeddings):
+        queries_matrix = [self.linear_queries(
+            doc_embedding) for doc_embedding in doc_embeddings]
+
+        keys_matrix = [self.linear_keys(
+            doc_embedding) for doc_embedding in doc_embeddings]
+
+        values_matrix = [self.linear_values(
+            doc_embedding) for doc_embedding in doc_embeddings]
 
 
 # class MaskedMultiHeadAttention():
@@ -110,11 +137,14 @@ class EncoderBlock(tf.keras.layers.Layer):
     def __init__(self, name=None):
         super(EncoderBlock, self).__init__(name=name)
         self.multihead_self_attention_layer = MultiHeadSelfAttentionLayer()
+        self.layer_normalisation_layer = LayerNormalisation()
 
     def call(self, encoder_input):
 
-        for document_embeddings in encoder_input:
-            pass
+        self_attention_output = [self.multihead_self_attention_layer(
+            document_embeddings) for document_embeddings in encoder_input]
+
+        layer_normalisation_output = ...
 
 
 class DecoderBlock(tf.keras.layers.Layer):
@@ -168,11 +198,11 @@ def main():
     padded_encoded_docs = pad_encoded_docs(
         encoded_docs, EMBEDDINGS_DIMENSION, MAX_SENTENCE_LENGTH)
 
-    for i in padded_encoded_docs:
-        shapes = []
-        for j in i:
-            shapes.append(len(i))
-        debug(shapes)
+    # for i in padded_encoded_docs:
+    #     shapes = []
+    #     for j in i:
+    #         shapes.append(len(i))
+    #     debug(shapes)
 
     # TODO: remove harcode
 
@@ -180,9 +210,9 @@ def main():
         padded_encoded_docs, MAX_SENTENCE_LENGTH, EMBEDDINGS_DIMENSION)
     encoder_input = input_embeddings.call()
 
-    debug(len(encoder_input))
-    debug(len(encoder_input[0]))
-    debug(len(encoder_input[0][0]))
+    # debug(len(encoder_input))
+    # debug(len(encoder_input[0]))
+    # debug(len(encoder_input[0][0]))
 
 
 if __name__ == "__main__":

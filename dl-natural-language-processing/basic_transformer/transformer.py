@@ -5,7 +5,7 @@ import pandas as pd
 import tensorflow as tf
 import tqdm
 from tensorflow.keras import layers
-from tensorflow.keras.layers import Dense, Dropout
+from tensorflow.keras.layers import Dense, Dropout, LayerNormalization
 from tensorflow.python.keras.layers.advanced_activations import Softmax
 from tqdm import tqdm, trange
 
@@ -54,12 +54,6 @@ class InputEmbedding():
 #####################################################
 
 
-class LayerNormalisation():
-
-    def __init__(self):
-        pass
-
-
 # class Linear(tf.keras.layers.Layer):
 #     def __init__(self, units=64, input_dim=(100, 512), name=None):
 #         super(Linear, self).__init__(name=name)
@@ -74,15 +68,14 @@ class LayerNormalisation():
 
 
 class MyDenseLayer(tf.keras.layers.Layer):
-    def __init__(self, num_outputs, input_shape, name=None):
+    def __init__(self, EMBEDDING_DIMENSION, name=None):
         super(MyDenseLayer, self).__init__(name=name)
-        self.input_shape = input_shape
-        self.num_outputs = num_outputs
+        self.EMBEDDING_DIMENSION = EMBEDDING_DIMENSION
 
     def build(self):
-        self.kernel = self.add_weight(name="kernel",
-                                      shape=(self.input_shape,
-                                             self.num_outputs))
+        self.kernel = self.add_weight(name="self-attention-weights",
+                                      shape=(self.EMBEDDING_DIMENSION,
+                                             self.EMBEDDING_DIMENSION))
 
     def call(self, inputs):
         return tf.matmul(inputs, self.kernel)
@@ -112,78 +105,104 @@ class ScaledDotProductAttentionLayer(tf.keras.layers.Layer):
 
 class MultiHeadSelfAttentionLayer(tf.keras.layers.Layer):
 
-    def __init__(self, EMBEDDINGS_DIMENSION=512, N_HEADS=8, name=None):
+    def __init__(self, EMBEDDINGS_DIMENSION=512, N_HEADS=8, MAX_SENTENCE_LENGTH=100, name=None):
         super(MultiHeadSelfAttentionLayer, self).__init__(name=name)
         self.EMBEDDINGS_DIMENSION = EMBEDDINGS_DIMENSION
         self.N_HEADS = N_HEADS
         self.linear_queries = MyDenseLayer(
-            input_shape=EMBEDDINGS_DIMENSION,  num_outputs=EMBEDDINGS_DIMENSION, name="linear_queries")
+            EMBEDDING_DIMENSION=EMBEDDINGS_DIMENSION,
+            name="linear_queries")
+
         self.linear_keys = MyDenseLayer(
-            input_shape=EMBEDDINGS_DIMENSION,  num_outputs=EMBEDDINGS_DIMENSION, name="linear_keys")
+            EMBEDDING_DIMENSION=EMBEDDINGS_DIMENSION,
+            name="linear_keys")
+
         self.linear_values = MyDenseLayer(
-            input_shape=EMBEDDINGS_DIMENSION,  num_outputs=EMBEDDINGS_DIMENSION, name="linear_values")
+            EMBEDDING_DIMENSION=EMBEDDINGS_DIMENSION,
+            name="linear_values")
 
         self.scaled_dot_product_attention = [
             ScaledDotProductAttentionLayer() for i in range(N_HEADS)]
 
-    def call(self, encoder_input, mask=False):
-        queries_matrix = [[self.linear_queries(word_embeddings)
-                           for word_embeddings in document_embeddings]
+    def call(self, encoder_input, mask=False):  # TODO: Add Encoder mask
+        queries_matrix = [self.linear_queries(document_embeddings)
                           for document_embeddings in encoder_input]
 
-        keys_matrix = [[self.linear_keys(word_embeddings)
-                        for word_embeddings in document_embeddings]
+        keys_matrix = [self.linear_keys(document_embeddings)
                        for document_embeddings in encoder_input]
-        values_matrix = [[self.linear_values(word_embeddings)
-                          for word_embeddings in document_embeddings]
+
+        values_matrix = [self.linear_values(document_embeddings)
                          for document_embeddings in encoder_input]
 
         queries_matrix_head = [np.split(queries_matrix, self.N_HEADS, axis=-1)]
         keys_matrix_head = [np.split(keys_matrix, self.N_HEADS, axis=-1)]
         values_matrix_head = [np.split(values_matrix, self.N_HEADS, axis=-1)]
 
-        z_matrix_output = np.concatenate(
-            [self.scaled_dot_product_attention[i](
+        concat_attention = np.concatenate(
+            [(self.scaled_dot_product_attention)[i](
                 queries_matrix_head, keys_matrix_head, values_matrix_head)
              for i in range(self.N_HEADS)])
 
-        return z_matrix_output
+        return concat_attention
 
 
 class EncoderBlock(tf.keras.layers.Layer):
-    def __init__(self, N_HEADS=8,  name=None):
+
+    def __init__(self, EMBEDDING_DIMENSION=512, N_HEADS=8,  name=None):
         super(EncoderBlock, self).__init__(name=name)
-        self.multihead_self_attention_layer_1 = MultiHeadSelfAttentionLayer()
-        self.layer_normalisation_layer = LayerNormalisation()
+        self.multihead_self_attention = MultiHeadSelfAttentionLayer()
+        self.layer_normalisation = LayerNormalization(
+            axis=-1)
+        self.feed_forward = MyDenseLayer(
+            EMBEDDING_DIMENSION, name="feed_forward")
 
     def call(self, encoder_input):
 
-        self_attention_output = self.multihead_self_attention_layer(
+        self_attention_output = self.multihead_self_attention(
             encoder_input)
 
-        layer_normalisation_output = ...
+        layer_normalisation_output = self.layer_normalisation(
+            self_attention_output)
+
+        encoder_intermediate_output = encoder_input + layer_normalisation_output
+
+        feed_forward_output = [self.feed_forward(document_embeddings)
+                               for document_embeddings in encoder_intermediate_output]
+
+        encoder_output = encoder_input + feed_forward_output
+
+        return encoder_output
 
 
 class DecoderBlock(tf.keras.layers.Layer):
-    def __init__(self, name=None):
+    def __init__(self, EMBEDDING_DIMENSION=512, N_HEADS=8, name=None):
         super(DecoderBlock, self).__init__(name=name)
 
 
 class Encoder(tf.keras.layers.Layer):
-    def __init__(self, name=None):
+    def __init__(self, EMBEDDING_DIMENSION=512, N_HEADS=8, name=None):
         super(Encoder, self).__init__(name=name)
+        self.encoder_block = EncoderBlock(
+            EMBEDDING_DIMENSION=512, N_HEADS=8, name="encoder")
+
+    def call(self, encoder_input):
+        return self.encoder_block(encoder_input)
 
 
 class Decoder(tf.keras.layers.Layer):
-    def __init__(self, name=None):
+    def __init__(self, EMBEDDING_DIMENSION=512, N_HEADS=8, name=None):
         super(Decoder, self).__init__(name=name)
 
 
 class Transformer(tf.keras.Model):
 
-    def __init__(self):
-        self.encoder = Encoder()
+    def __init__(self, EMBEDDING_DIMENSION=512, N_HEADS=8, name=None):
+        super(Decoder, self).__init__(name=name)
+        self.encoder = Encoder(EMBEDDING_DIMENSION=512, N_HEADS=8)
         self.decoder = Decoder()
+
+    def call(self, encoder_input):
+        return self.encoder(encoder_input)
 
 
 def debug(output):

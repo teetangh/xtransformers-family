@@ -7,6 +7,7 @@ import tqdm
 from tensorflow.keras import layers
 from tensorflow.keras.layers import Dense, Dropout, LayerNormalization
 from tensorflow.python.keras.layers.advanced_activations import Softmax
+from tensorflow.python.keras.layers.embeddings import Embedding
 from tqdm import tqdm, trange
 
 from abbreviations import ABBREVIATIONS
@@ -18,7 +19,7 @@ class InputEmbedding():
 
     def __init__(self, padded_encoded_docs, MAX_SENTENCE_LENGTH=100, EMBEDDINGS_DIMENSION=512):
         self.padded_encoded_docs = padded_encoded_docs
-        self.CORPUS_SIZE = len(padded_encoded_docs)
+        # self.CORPUS_SIZE = len(padded_encoded_docs)
         self.ABBREVIATIONS = ABBREVIATIONS
         # since word2vec # TODO: make generic later
         self.MAX_SENTENCE_LENGTH = MAX_SENTENCE_LENGTH
@@ -54,31 +55,29 @@ class InputEmbedding():
 #####################################################
 
 
-# class Linear(tf.keras.layers.Layer):
-#     def __init__(self, units=64, input_dim=(100, 512), name=None):
-#         super(Linear, self).__init__(name=name)
-#         self.w = self.add_weight(
-#             shape=(input_dim, units), initializer="random_normal", trainable=True
-#         )
-#         self.b = self.add_weight(
-#             shape=(units,), initializer="zeros", trainable=True)
-
-#     def call(self, inputs):
-#         return tf.matmul(inputs, self.w) + self.b
-
-
-class MyDenseLayer(tf.keras.layers.Layer):
-    def __init__(self, EMBEDDING_DIMENSION, name=None):
-        super(MyDenseLayer, self).__init__(name=name)
-        self.EMBEDDING_DIMENSION = EMBEDDING_DIMENSION
-
-    def build(self):
-        self.kernel = self.add_weight(name="self-attention-weights",
-                                      shape=(self.EMBEDDING_DIMENSION,
-                                             self.EMBEDDING_DIMENSION))
+class Linear(tf.keras.layers.Layer):
+    def __init__(self, EMBEDDINGS_DIMENSION=512, N_HEADS=8, name=None):
+        super(Linear, self).__init__(name=name)
+        self.self_attention = self.add_weight(
+            shape=(EMBEDDINGS_DIMENSION, EMBEDDINGS_DIMENSION), initializer="random_normal", trainable=True
+        )
 
     def call(self, inputs):
-        return tf.matmul(inputs, self.kernel)
+        return tf.matmul(inputs, self.self_attention)
+
+
+# class MyDenseLayer(tf.keras.layers.Layer):
+#     def __init__(self, EMBEDDING_DIMENSION, name=None):
+#         super(MyDenseLayer, self).__init__(name=name)
+#         self.EMBEDDING_DIMENSION = EMBEDDING_DIMENSION
+
+#     def build(self):
+#         self.kernel = self.add_weight(name="self-attention-weights",
+#                                       shape=(self.EMBEDDING_DIMENSION,
+#                                              self.EMBEDDING_DIMENSION))
+
+#     def call(self, inputs):
+#         return tf.matmul(inputs, self.kernel)
 
 #####################################################
 
@@ -109,41 +108,42 @@ class MultiHeadSelfAttentionLayer(tf.keras.layers.Layer):
         super(MultiHeadSelfAttentionLayer, self).__init__(name=name)
         self.EMBEDDINGS_DIMENSION = EMBEDDINGS_DIMENSION
         self.N_HEADS = N_HEADS
-        self.linear_queries = MyDenseLayer(
-            EMBEDDING_DIMENSION=EMBEDDINGS_DIMENSION,
+        self.MAX_SENTENCE_LENGTH = MAX_SENTENCE_LENGTH
+        self.linear_queries = Linear(
             name="linear_queries")
 
-        self.linear_keys = MyDenseLayer(
-            EMBEDDING_DIMENSION=EMBEDDINGS_DIMENSION,
+        self.linear_keys = Linear(
             name="linear_keys")
 
-        self.linear_values = MyDenseLayer(
-            EMBEDDING_DIMENSION=EMBEDDINGS_DIMENSION,
+        self.linear_values = Linear(
             name="linear_values")
 
         self.scaled_dot_product_attention = [
             ScaledDotProductAttentionLayer() for i in range(N_HEADS)]
 
     def call(self, encoder_input, mask=False):  # TODO: Add Encoder mask
-        queries_matrix = [self.linear_queries(document_embeddings)
-                          for document_embeddings in encoder_input]
+        queries_matrix = np.array([self.linear_queries(document_embeddings)
+                                   for document_embeddings in encoder_input])
 
-        keys_matrix = [self.linear_keys(document_embeddings)
-                       for document_embeddings in encoder_input]
+        keys_matrix = np.array([self.linear_keys(document_embeddings)
+                                for document_embeddings in encoder_input])
 
-        values_matrix = [self.linear_values(document_embeddings)
-                         for document_embeddings in encoder_input]
+        values_matrix = np.array([self.linear_values(document_embeddings)
+                                  for document_embeddings in encoder_input])
 
-        queries_matrix_head = [np.split(queries_matrix, self.N_HEADS, axis=-1)]
-        keys_matrix_head = [np.split(keys_matrix, self.N_HEADS, axis=-1)]
-        values_matrix_head = [np.split(values_matrix, self.N_HEADS, axis=-1)]
+        queries_matrix_head = np.split(queries_matrix, self.N_HEADS, axis=-1)
+        keys_matrix_head = np.split(keys_matrix, self.N_HEADS, axis=-1)
+        values_matrix_head = np.split(values_matrix, self.N_HEADS, axis=-1)
 
+        print(np.array(queries_matrix_head).shape)
+
+        print("Concatenating Heads")
         concat_attention = np.concatenate(
-            [(self.scaled_dot_product_attention)[i](
-                queries_matrix_head, keys_matrix_head, values_matrix_head)
-             for i in range(self.N_HEADS)])
+            [self.scaled_dot_product_attention[i](
+                queries_matrix_head[i], keys_matrix_head[i], values_matrix_head[i])
+             for i in trange(self.N_HEADS)], axis=0)
 
-        return concat_attention
+        return np.array(concat_attention).reshape(-1, self.MAX_SENTENCE_LENGTH, self.EMBEDDINGS_DIMENSION)
 
 
 class EncoderBlock(tf.keras.layers.Layer):
@@ -153,8 +153,7 @@ class EncoderBlock(tf.keras.layers.Layer):
         self.multihead_self_attention = MultiHeadSelfAttentionLayer()
         self.layer_normalisation = LayerNormalization(
             axis=-1)
-        self.feed_forward = MyDenseLayer(
-            EMBEDDING_DIMENSION, name="feed_forward")
+        self.feed_forward = Linear(name="feed_forward")
 
     def call(self, encoder_input):
 
@@ -197,9 +196,9 @@ class Decoder(tf.keras.layers.Layer):
 class Transformer(tf.keras.Model):
 
     def __init__(self, EMBEDDING_DIMENSION=512, N_HEADS=8, name=None):
-        super(Decoder, self).__init__(name=name)
+        super(Transformer, self).__init__(name=name)
         self.encoder = Encoder(EMBEDDING_DIMENSION=512, N_HEADS=8)
-        self.decoder = Decoder()
+        # self.decoder = Decoder()
 
     def call(self, encoder_input):
         return self.encoder(encoder_input)
@@ -221,7 +220,7 @@ def main():
 
     data = pd.read_csv(os.path.join(
         DIR_PATH, "data/rus.txt"), sep="\t", header=None)
-    data_subset = data.iloc[:1000, 0:2]
+    data_subset = data.iloc[:200, 0:2]
     corpus = data_subset[0].to_list()
 
     print("Cleaning Corpus...")
@@ -247,6 +246,9 @@ def main():
     input_embeddings = InputEmbedding(
         padded_encoded_docs, MAX_SENTENCE_LENGTH, EMBEDDINGS_DIMENSION)
     encoder_input = input_embeddings.call()
+    transformer = Transformer(
+        EMBEDDING_DIMENSION=EMBEDDINGS_DIMENSION, N_HEADS=N_HEADS, name="transformer")
+    transformer(encoder_input)
 
     # debug(len(encoder_input))
     # debug(len(encoder_input[0]))
@@ -255,7 +257,9 @@ def main():
 
 if __name__ == "__main__":
     os.environ['TF_XLA_FLAGS'] = '--tf_xla_enable_xla_devices'
-    # print("GPUs: ", len(tf.config.experimental.list_physical_devices('GPU')))
-    # gpus = tf.config.experimental.list_physical_devices("GPU")
-    # tf.config.experimental.set_memory_growth(gpus[0], True)
+    print("GPUs: ", len(tf.config.experimental.list_physical_devices('GPU')))
+    gpus = tf.config.experimental.list_physical_devices("GPU")
+    tf.config.experimental.set_memory_growth(gpus[0], True)
+    # tf.config.gpu.set_per_process_memory_fraction(0.4)
+#
     main()

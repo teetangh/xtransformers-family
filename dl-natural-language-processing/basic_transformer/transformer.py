@@ -15,16 +15,26 @@ from preprocess_corpus import (clean_text, get_document_embeddings,
                                pad_encoded_docs)
 
 
-class InputEmbedding():
+class IOEmbedding(tf.keras.layers.Layer):
 
-    def __init__(self, padded_encoded_docs, MAX_SENTENCE_LENGTH=100, EMBEDDINGS_DIMENSION=512):
-        self.padded_encoded_docs = padded_encoded_docs
-        # self.CORPUS_SIZE = len(padded_encoded_docs)
+    def __init__(self,
+                 MAX_SENTENCE_LENGTH=100,
+                 EMBEDDINGS_DIMENSION=512,
+                 pretrained_embeddings=None,
+                 name=None):
+        super(IOEmbedding, self).__init__(name=name)
+
         self.ABBREVIATIONS = ABBREVIATIONS
-        # since word2vec # TODO: make generic later
         self.MAX_SENTENCE_LENGTH = MAX_SENTENCE_LENGTH
         self.EMBEDDINGS_DIMENSION = EMBEDDINGS_DIMENSION
         self.document_positional_embeddedings = self.get_positional_embeddings()
+        self.pretrained_embeddings = pretrained_embeddings
+
+        if pretrained_embeddings is None:
+            self.embedding_layer = Embedding(input_dim=100,
+                                             output_dim=EMBEDDINGS_DIMENSION, input_length=MAX_SENTENCE_LENGTH)
+        elif pretrained_embeddings is "Word2Vec" or pretrained_embeddings is "Glove":
+            pass
 
     def get_positional_embeddings(self):
         print("Calculating Positional Embeddings...")
@@ -44,13 +54,15 @@ class InputEmbedding():
         # print(positional_embeddings.shape)
         return tf.convert_to_tensor(positional_embeddings)
 
-    def call(self):
+    def call(self, padded_encoded_docs):
         print("Adding Positional Embeddings...")
 
-        final_embeddings = [np.array(np.add(
-            doc, self.document_positional_embeddedings)) for doc in tqdm(self.padded_encoded_docs)]
+        final_embeddings = [
+            np.array(np.add(doc, self.document_positional_embeddedings))
+            for doc in tqdm(padded_encoded_docs)]
 
         return final_embeddings
+
 
 #####################################################
 
@@ -67,14 +79,14 @@ class Linear(tf.keras.layers.Layer):
 
 
 # class MyDenseLayer(tf.keras.layers.Layer):
-#     def __init__(self, EMBEDDING_DIMENSION, name=None):
+#     def __init__(self, EMBEDDINGS_DIMENSION, name=None):
 #         super(MyDenseLayer, self).__init__(name=name)
-#         self.EMBEDDING_DIMENSION = EMBEDDING_DIMENSION
+#         self.EMBEDDINGS_DIMENSION = EMBEDDINGS_DIMENSION
 
 #     def build(self):
 #         self.kernel = self.add_weight(name="self-attention-weights",
-#                                       shape=(self.EMBEDDING_DIMENSION,
-#                                              self.EMBEDDING_DIMENSION))
+#                                       shape=(self.EMBEDDINGS_DIMENSION,
+#                                              self.EMBEDDINGS_DIMENSION))
 
 #     def call(self, inputs):
 #         return tf.matmul(inputs, self.kernel)
@@ -141,14 +153,15 @@ class MultiHeadSelfAttentionLayer(tf.keras.layers.Layer):
         concat_attention = np.concatenate(
             [self.scaled_dot_product_attention[i](
                 queries_matrix_head[i], keys_matrix_head[i], values_matrix_head[i])
-             for i in trange(self.N_HEADS)], axis=0)
+             for i in trange(self.N_HEADS)], axis=-1)
 
-        return np.array(concat_attention).reshape(-1, self.MAX_SENTENCE_LENGTH, self.EMBEDDINGS_DIMENSION)
+        return np.array(concat_attention)
+        # .reshape(-1, self.MAX_SENTENCE_LENGTH, self.EMBEDDINGS_DIMENSION)
 
 
 class EncoderBlock(tf.keras.layers.Layer):
 
-    def __init__(self, EMBEDDING_DIMENSION=512, N_HEADS=8,  name=None):
+    def __init__(self, EMBEDDINGS_DIMENSION=512, N_HEADS=8,  name=None):
         super(EncoderBlock, self).__init__(name=name)
         self.multihead_self_attention = MultiHeadSelfAttentionLayer()
         self.layer_normalisation = LayerNormalization(
@@ -174,34 +187,43 @@ class EncoderBlock(tf.keras.layers.Layer):
 
 
 class DecoderBlock(tf.keras.layers.Layer):
-    def __init__(self, EMBEDDING_DIMENSION=512, N_HEADS=8, name=None):
+    def __init__(self, EMBEDDINGS_DIMENSION=512, N_HEADS=8, name=None):
         super(DecoderBlock, self).__init__(name=name)
 
 
 class Encoder(tf.keras.layers.Layer):
-    def __init__(self, EMBEDDING_DIMENSION=512, N_HEADS=8, name=None):
+    def __init__(self, EMBEDDINGS_DIMENSION=512, N_HEADS=8, name=None):
         super(Encoder, self).__init__(name=name)
         self.encoder_block = EncoderBlock(
-            EMBEDDING_DIMENSION=512, N_HEADS=8, name="encoder")
+            EMBEDDINGS_DIMENSION=512, N_HEADS=8, name="encoder")
 
     def call(self, encoder_input):
         return self.encoder_block(encoder_input)
 
 
 class Decoder(tf.keras.layers.Layer):
-    def __init__(self, EMBEDDING_DIMENSION=512, N_HEADS=8, name=None):
+    def __init__(self, EMBEDDINGS_DIMENSION=512, N_HEADS=8, name=None):
         super(Decoder, self).__init__(name=name)
 
 
 class Transformer(tf.keras.Model):
 
-    def __init__(self, EMBEDDING_DIMENSION=512, N_HEADS=8, name=None):
+    def __init__(self,
+                 MAX_SENTENCE_LENGTH=100,
+                 EMBEDDINGS_DIMENSION=512,
+                 N_HEADS=8, name=None):
         super(Transformer, self).__init__(name=name)
-        self.encoder = Encoder(EMBEDDING_DIMENSION=512, N_HEADS=8)
+
+        self.input_embeddings = IOEmbedding(
+            MAX_SENTENCE_LENGTH, EMBEDDINGS_DIMENSION, pretrained_embeddings="Word2Vec")
+        self.encoder = Encoder(EMBEDDINGS_DIMENSION=512, N_HEADS=8)
         # self.decoder = Decoder()
 
-    def call(self, encoder_input):
-        return self.encoder(encoder_input)
+    def call(self, padded_encoded_docs):
+        encoder_input = self.input_embeddings(padded_encoded_docs)
+        temp = self.encoder(encoder_input)
+        # assert(np.array(temp).shape == (400, 100, 512))
+        return temp
 
 
 def debug(output):
@@ -235,24 +257,11 @@ def main():
     padded_encoded_docs = pad_encoded_docs(
         encoded_docs, EMBEDDINGS_DIMENSION, MAX_SENTENCE_LENGTH)
 
-    # for i in padded_encoded_docs:
-    #     shapes = []
-    #     for j in i:
-    #         shapes.append(len(i))
-    #     debug(shapes)
-
-    # TODO: remove harcode
-
-    input_embeddings = InputEmbedding(
-        padded_encoded_docs, MAX_SENTENCE_LENGTH, EMBEDDINGS_DIMENSION)
-    encoder_input = input_embeddings.call()
     transformer = Transformer(
-        EMBEDDING_DIMENSION=EMBEDDINGS_DIMENSION, N_HEADS=N_HEADS, name="transformer")
-    transformer(encoder_input)
-
-    # debug(len(encoder_input))
-    # debug(len(encoder_input[0]))
-    # debug(len(encoder_input[0][0]))
+        EMBEDDINGS_DIMENSION=EMBEDDINGS_DIMENSION,
+        MAX_SENTENCE_LENGTH=MAX_SENTENCE_LENGTH,
+        N_HEADS=N_HEADS, name="transformer")
+    transformer(padded_encoded_docs)
 
 
 if __name__ == "__main__":

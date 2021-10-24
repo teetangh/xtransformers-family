@@ -19,6 +19,7 @@ class IOEmbedding(tf.keras.layers.Layer):
     def __init__(self,
                  MAX_SEQUENCE_LENGTH=100,
                  EMBEDDINGS_DIMENSION=512,
+                 VOCAB_SIZE=1000,
                  pretrained_embeddings=None,
                  name=None):
         super(IOEmbedding, self).__init__(name=name)
@@ -30,13 +31,15 @@ class IOEmbedding(tf.keras.layers.Layer):
         self.pretrained_embeddings = pretrained_embeddings
 
         if pretrained_embeddings is None:
-            self.embedding_layer = Embedding(input_dim=1000,
+            self.embedding_layer = Embedding(input_dim=VOCAB_SIZE,
                                              output_dim=EMBEDDINGS_DIMENSION,
                                              input_length=MAX_SEQUENCE_LENGTH,
                                              #   weights=[embedding_matrix],trainable=False
                                              )
         elif pretrained_embeddings is "Word2Vec" or pretrained_embeddings is "Glove":
             pass
+        else:
+            raise("Embeddings not supported")
 
     def get_positional_embeddings(self):
         print("Calculating Positional Embeddings...")
@@ -56,12 +59,12 @@ class IOEmbedding(tf.keras.layers.Layer):
         # print(positional_embeddings.shape)
         return tf.convert_to_tensor(positional_embeddings)
 
-    def call(self, padded_encoded_input_docs):
+    def call(self, io_embedding_input):
         print("Adding Positional Embeddings...")
 
         final_embeddings = [
             np.array(np.add(doc, self.document_positional_embeddedings))
-            for doc in tqdm(padded_encoded_input_docs)]
+            for doc in tqdm(io_embedding_input)]
 
         return final_embeddings
 
@@ -229,7 +232,7 @@ class DecoderBlock(tf.keras.layers.Layer):
         )
 
         layer_normalisation_output2 = self.layer_normalisation(
-            self_attention_output)
+            encoder_decoder_attention_output)
 
         decoder_intermediate_output2 = decoder_intermediate_output1 + \
             layer_normalisation_output2
@@ -267,33 +270,39 @@ class Transformer(tf.keras.Model):
     def __init__(self,
                  MAX_SEQUENCE_LENGTH=100,
                  EMBEDDINGS_DIMENSION=512,
-                 N_HEADS=8, name=None):
+                 N_HEADS=8, VOCAB_SIZE=1000,
+                 name=None):
         super(Transformer, self).__init__(name=name)
 
-        self.input_embeddings = IOEmbedding(
-            MAX_SEQUENCE_LENGTH, EMBEDDINGS_DIMENSION, pretrained_embeddings="Word2Vec")
+        self.input_embeddings_layer = IOEmbedding(
+            MAX_SEQUENCE_LENGTH, EMBEDDINGS_DIMENSION, VOCAB_SIZE, pretrained_embeddings="Word2Vec")
         self.encoder = Encoder(EMBEDDINGS_DIMENSION=512, N_HEADS=8)
 
         # self.decoder = Decoder()
-        self.output_embeddings = IOEmbedding(
+        self.output_embeddings_layer = IOEmbedding(
             MAX_SEQUENCE_LENGTH, EMBEDDINGS_DIMENSION, pretrained_embeddings=None)
         self.decoder = Decoder(EMBEDDINGS_DIMENSION=512, N_HEADS=8)
 
-    def call(self, padded_encoded_input_docs, padded_encoded_output_docs):
-        encoder_input = self.input_embeddings(padded_encoded_input_docs)
+        self.linear = Dense(units=VOCAB_SIZE, activation=tf.keras.activations.softmax,
+                            kernel_initializer="glorot_uniform", bias_initializer="zeros")
+
+    def call(self, input_embeddings, output_embeddings):
+        encoder_input = self.input_embeddings_layer(input_embeddings)
         encoder_output = self.encoder(encoder_input)
 
-        decoder_input = self.output_embeddings(
-            padded_encoded_output_docs)  # TODO: Russian embeddings
+        decoder_input = self.output_embeddings_layer(
+            output_embeddings)  # TODO: Russian embeddings
         decoder_output = self.decoder(decoder_input, encoder_output)
 
-        return decoder_output
+        linear_output = self.linear(decoder_output)
+        print(np.array(linear_output).shape)
+        return linear_output
 
 
-def debug(output):
+def debug(output, filename="temp"):
     DIR_PATH = os.path.dirname(os.path.realpath(__file__))
     print(output, end="\n\n", file=open(
-        os.path.join(DIR_PATH, "log/output.txt"), "a+"))
+        os.path.join(DIR_PATH, f"log/{filename}.txt"), "a+"))
 
 
 def main():
@@ -303,6 +312,7 @@ def main():
     MAX_SEQUENCE_LENGTH = 100
     N_HEADS = 8
     # QUERY_SIZE = EMBEDDINGS_DIMENSION / N_HEADS
+    VOCAB_SIZE = 1000
 
     data = pd.read_csv(os.path.join(
         DIR_PATH, "data/rus.txt"), sep="\t", header=None)
@@ -310,24 +320,35 @@ def main():
     source_corpus = data_subset[0].to_list()
     target_corpus = data_subset[1].to_list()
 
+    # for i, t in enumerate(target_corpus):
+    #     print(i, t)
+
+    print("Preparing Input Embeddings")
     print("Cleaning Corpus...")
     cleaned_source_corpus = clean_text(source_corpus)
-    # cleaned_target_corpus = clean_text(target_corpus)
+    # cleaned_target_corpus = clean_text(target_corpus) # TODO: modify clean_text function for target language
 
     print("Fetching Document Embeddings...")
     encoded_docs = get_document_embeddings(
         cleaned_source_corpus, EMBEDDINGS_DIMENSION)
 
     print("Padding Document Embeddings...")
-    # padded_encoded_input_docs = pad_encoded_docs(encoded_docs, MAX_SEQUENCE_LENGTH)
-    padded_encoded_input_docs = pad_encoded_docs(
+    padded_encoded_source_docs = pad_encoded_docs(
         encoded_docs, EMBEDDINGS_DIMENSION, MAX_SEQUENCE_LENGTH)
+
+
+    print("Preparing Output Embeddings")
+    
+
 
     transformer = Transformer(
         EMBEDDINGS_DIMENSION=EMBEDDINGS_DIMENSION,
         MAX_SEQUENCE_LENGTH=MAX_SEQUENCE_LENGTH,
-        N_HEADS=N_HEADS, name="transformer")
-    transformer(padded_encoded_input_docs)
+        N_HEADS=N_HEADS,
+        VOCAB_SIZE=VOCAB_SIZE,
+        name="transformer")
+    transformer(input_embeddings=padded_encoded_source_docs,
+                output_embeddings=target_corpus)
 
 
 if __name__ == "__main__":
@@ -336,5 +357,4 @@ if __name__ == "__main__":
     gpus = tf.config.experimental.list_physical_devices("GPU")
     tf.config.experimental.set_memory_growth(gpus[0], True)
     # tf.config.gpu.set_per_process_memory_fraction(0.4)
-#
     main()

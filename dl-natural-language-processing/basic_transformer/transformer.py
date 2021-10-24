@@ -336,10 +336,7 @@ def main():
     padded_encoded_source_docs = pad_encoded_docs(
         encoded_docs, EMBEDDINGS_DIMENSION, MAX_SEQUENCE_LENGTH)
 
-
     print("Preparing Output Embeddings")
-    
-
 
     transformer = Transformer(
         EMBEDDINGS_DIMENSION=EMBEDDINGS_DIMENSION,

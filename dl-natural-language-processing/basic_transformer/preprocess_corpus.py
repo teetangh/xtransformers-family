@@ -49,8 +49,8 @@ def clean_text(df):
         text = pattern.sub('', text)  # remove all the links
         text = emoji_pattern.sub(r"", text)
 
-        text = [re.sub(abbreviation[0], abbreviation[1], str(text))
-                for abbreviation in ABBREVIATIONS]
+        # text = [re.sub(abbreviation[0], abbreviation[1], str(text))
+        #         for abbreviation in ABBREVIATIONS]
 
         text = re.sub(r"[,.\"!@#$%^&*(){}?/;`~:<>+=-]", "", str(text))
 
@@ -67,7 +67,7 @@ def clean_text(df):
         # Remove the stop words (set of words that do not provide meaningful information)
         stop_words = set(stopwords.words("english"))
         stop_words.discard("not")
-        # words = [w for w in words if not w in stop_words]
+        words = [w for w in words if not w in stop_words]
 
         # Use Porter Stemmer to stem the words to root words (necessary for sentiment analysis and text processing)
         words = [PS.stem(w) for w in words if not w in stop_words]
@@ -75,23 +75,6 @@ def clean_text(df):
         cleaned_text.append(words)  # add it to the large list
 
     return cleaned_text
-
-
-def handle_misspellings_and_oov_words(w2v_model, misspelt_word):
-    print("misspelt word is ", misspelt_word)
-    top10_most_similar = w2v_model.wv.most_similar(misspelt_word, topn=10)
-
-    sum_vec = (w2v_model[top10_most_similar[0][0]]-w2v_model[misspelt_word])
-
-    for i in trange(1, len(top10_most_similar)):
-        sum_vec += (w2v_model[top10_most_similar[0][0]] -
-                    w2v_model[top10_most_similar[i][0]])
-
-    translation_vec = sum_vec / 10
-
-    real_word = w2v_model[misspelt_word] + translation_vec
-
-    return real_word
 
 
 def get_document_embeddings(cleaned_corpus, EMBEDDINGS_DIMENSION=512):
@@ -108,7 +91,7 @@ def get_document_embeddings(cleaned_corpus, EMBEDDINGS_DIMENSION=512):
         w2v_model = Word2Vec.load(model_path)
     else:
         w2v_model = Word2Vec(
-            sentences=cleaned_corpus,
+            sentences=[cleaned_corpus],
             vector_size=EMBEDDINGS_DIMENSION,
             min_count=1,
             window=5,
@@ -117,11 +100,11 @@ def get_document_embeddings(cleaned_corpus, EMBEDDINGS_DIMENSION=512):
         )
 
     # DEBUG
-    temp_idx = w2v_model.wv.key_to_index[cleaned_corpus[0][0]]
-    temp_cnt = w2v_model.wv.get_vecattr(cleaned_corpus[0][0], "count")  # 👍
+    temp_idx = w2v_model.wv.key_to_index[cleaned_corpus[0]]
+    temp_cnt = w2v_model.wv.get_vecattr(cleaned_corpus[0], "count")  # 👍
     vocab_len = len(w2v_model.wv)  # 👍
 
-    # Print all the vord vectors
+    # # Print all the vord vectors
     print(w2v_model.wv.vectors.shape)
     print(temp_idx, temp_cnt, vocab_len)
 
@@ -129,11 +112,17 @@ def get_document_embeddings(cleaned_corpus, EMBEDDINGS_DIMENSION=512):
     # encoded_docs is a 3d list
     # TODO: (if some lists are empty that's a problem in embedding )
     print("Encoding the docs...")
+    print(np.array(cleaned_corpus).shape)
     encoded_docs = [[w2v_model.wv[word]
+
+                    # print("if ", word)
                      if word in w2v_model.wv
+
                      else handle_misspellings_and_oov_words(w2v_model, word)
+                     # else print("else ", word)
+
                      for word in post]
-                    for post in tqdm(cleaned_corpus)]
+                    for post in tqdm([cleaned_corpus])]
 
     # encoded_docs = []
     # for post in cleaned_corpus:
@@ -182,3 +171,22 @@ def pad_encoded_docs(encoded_docs, EMBEDDINGS_DIMENSION=512, MAX_SENTENCE_LENGTH
 
     # return padded_posts
     return padded_posts
+
+
+def handle_misspellings_and_oov_words(w2v_model, misspelt_word):
+    print("Misspelt word is ", misspelt_word)
+    top10_most_similar = w2v_model.wv.most_similar(misspelt_word,
+                                                   #    topn=10
+                                                   )
+
+    sum_vec = (w2v_model[top10_most_similar[0][0]]-w2v_model[misspelt_word])
+
+    for i in trange(1, len(top10_most_similar)):
+        sum_vec += (w2v_model[top10_most_similar[0][0]] -
+                    w2v_model[top10_most_similar[i][0]])
+
+    translation_vec = sum_vec / 10
+
+    real_word = w2v_model[misspelt_word] + translation_vec
+
+    return real_word

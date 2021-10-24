@@ -191,16 +191,26 @@ class EncoderBlock(tf.keras.layers.Layer):
 
         self_attention_output = self.multihead_self_attention(
             attention_input=encoder_input)
+        print("self_attention_output shape ",
+              np.array(self_attention_output).shape)
 
         layer_normalisation_output = self.layer_normalisation(
             self_attention_output)
+        print("layer_normalisation_output shape ",
+              np.array(layer_normalisation_output).shape)
 
-        encoder_intermediate_output = encoder_input + layer_normalisation_output
+        encoder_intermediate_output = np.add(
+            encoder_input, layer_normalisation_output)
+        print("encoder_intermediate_output shape ",
+              np.array(encoder_intermediate_output).shape)
 
-        feed_forward_output = [self.feed_forward(document_embeddings)
-                               for document_embeddings in encoder_intermediate_output]
+        feed_forward_output = [self.feed_forward(
+            document_embeddings)for document_embeddings in encoder_intermediate_output]
+        print("feed_forward_output shape ",
+              np.array(feed_forward_output).shape)
 
-        encoder_output = encoder_input + feed_forward_output
+        encoder_output = np.add(encoder_input, feed_forward_output)
+        print("encoder_output shape ", np.array(encoder_output).shape)
 
         return encoder_output
 
@@ -224,7 +234,8 @@ class DecoderBlock(tf.keras.layers.Layer):
         layer_normalisation_output1 = self.layer_normalisation(
             self_attention_output)
 
-        decoder_intermediate_output1 = decoder_input + layer_normalisation_output1
+        decoder_intermediate_output1 = np.add(
+            decoder_input, layer_normalisation_output1)
 
         encoder_decoder_attention_output = self.encoder_decoder_attention(
             attention_input=decoder_intermediate_output1,
@@ -234,13 +245,14 @@ class DecoderBlock(tf.keras.layers.Layer):
         layer_normalisation_output2 = self.layer_normalisation(
             encoder_decoder_attention_output)
 
-        decoder_intermediate_output2 = decoder_intermediate_output1 + \
-            layer_normalisation_output2
+        decoder_intermediate_output2 = np.add(
+            decoder_intermediate_output1, layer_normalisation_output2)
 
         feed_forward_output = [self.feed_forward(document_embeddings)
                                for document_embeddings in encoder_decoder_attention_output]
 
-        decoder_output = feed_forward_output + decoder_intermediate_output2
+        decoder_output = np.add(feed_forward_output,
+                                decoder_intermediate_output2)
 
         return decoder_output
 
@@ -286,15 +298,16 @@ class Transformer(tf.keras.Model):
         self.linear = Dense(units=VOCAB_SIZE, activation=tf.keras.activations.softmax,
                             kernel_initializer="glorot_uniform", bias_initializer="zeros")
 
-    def call(self, input_embeddings, output_embeddings):
+    def call(self, input_embeddings, output_embeddings=None):
         encoder_input = self.input_embeddings_layer(input_embeddings)
-        encoder_output = self.encoder(encoder_input)
+        linear_output = encoder_output = self.encoder(encoder_input)
 
-        decoder_input = self.output_embeddings_layer(
-            output_embeddings)  # TODO: Russian embeddings
-        decoder_output = self.decoder(decoder_input, encoder_output)
+        # decoder_input = self.output_embeddings_layer(
+        #     output_embeddings)  # TODO: Russian embeddings
+        # decoder_output = self.decoder(decoder_input, encoder_output)
 
-        linear_output = self.linear(decoder_output)
+        # linear_output = self.linear(decoder_output)
+
         print(np.array(linear_output).shape)
         return linear_output
 
@@ -320,13 +333,13 @@ def main():
     source_corpus = data_subset[0].to_list()
     target_corpus = data_subset[1].to_list()
 
-    # for i, t in enumerate(target_corpus):
-    #     print(i, t)
-
-    print("Preparing Input Embeddings")
     print("Cleaning Corpus...")
     cleaned_source_corpus = clean_text(source_corpus)
-    # cleaned_target_corpus = clean_text(target_corpus) # TODO: modify clean_text function for target language
+    # Abbreviations causing problems in text repitition
+    cleaned_target_corpus = clean_text(target_corpus)
+
+    for i, t in enumerate(target_corpus):
+        print(i, t)
 
     print("Fetching Document Embeddings...")
     encoded_docs = get_document_embeddings(
@@ -336,16 +349,16 @@ def main():
     padded_encoded_source_docs = pad_encoded_docs(
         encoded_docs, EMBEDDINGS_DIMENSION, MAX_SEQUENCE_LENGTH)
 
-    print("Preparing Output Embeddings")
-
     transformer = Transformer(
         EMBEDDINGS_DIMENSION=EMBEDDINGS_DIMENSION,
         MAX_SEQUENCE_LENGTH=MAX_SEQUENCE_LENGTH,
         N_HEADS=N_HEADS,
         VOCAB_SIZE=VOCAB_SIZE,
         name="transformer")
-    transformer(input_embeddings=padded_encoded_source_docs,
-                output_embeddings=target_corpus)
+    transformer(
+        input_embeddings=padded_encoded_source_docs,
+        # output_embeddings=target_corpus
+    )
 
 
 if __name__ == "__main__":

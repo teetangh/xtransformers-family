@@ -15,8 +15,6 @@ from nltk.tokenize import word_tokenize
 from tensorflow.python.keras.backend import dtype
 from tqdm import tqdm, trange
 
-from abbreviations import ABBREVIATIONS
-
 
 def load_nlp_libraries():
     nltk.download('punkt')
@@ -44,13 +42,32 @@ def clean_text(df):
                                u"\U000024C2-\U0001F251"
                                "]+", flags=re.UNICODE)
 
+    ABBREVIATIONS = [[r"i'm", "i am"],
+                     [r"he's", "he is"],
+                     [r"she's", "she is"],
+                     [r"that's", "that is"],
+                     [r"what's", "what is"],
+                     [r"where's", "where is"],
+                     [r"\'ll", " will"],
+                     [r"\'ve", " have"],
+                     [r"\'re", " are"],
+                     [r"\'d", " would"],
+                     [r"\'ve", " have"],
+                     [r"won't", "will not"],
+                     [r"don't", "do not"],
+                     [r"did't", "did not"],
+                     [r"can't", "can not"],
+                     [r"it's", "it is"],
+                     [r"couldn't", "could not"],
+                     [r"have't", "have not"]]
+
     for text in tqdm(lines):
         text = text.lower()  # convert to lower case
         text = pattern.sub('', text)  # remove all the links
         text = emoji_pattern.sub(r"", text)
 
-        # text = [re.sub(abbreviation[0], abbreviation[1], str(text))
-        #         for abbreviation in ABBREVIATIONS]
+        for abbreviation in ABBREVIATIONS:
+            text = re.sub(abbreviation[0], abbreviation[1], str(text))
 
         text = re.sub(r"[,.\"!@#$%^&*(){}?/;`~:<>+=-]", "", str(text))
 
@@ -77,7 +94,7 @@ def clean_text(df):
     return cleaned_text
 
 
-def get_document_embeddings(cleaned_corpus, EMBEDDINGS_DIMENSION=512):
+def get_word2vec_doc_embeddings(cleaned_corpus, EMBEDDINGS_DIMENSION=512):
     # Loading Word2Vec
     # TODO: Use
     # EMBEDDING_DIR = ...
@@ -190,3 +207,7 @@ def handle_misspellings_and_oov_words(w2v_model, misspelt_word):
     real_word = w2v_model[misspelt_word] + translation_vec
 
     return real_word
+
+
+def get_one_hot_encoded_doc_embeddings():
+    pass

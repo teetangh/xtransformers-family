@@ -9,8 +9,7 @@ from tensorflow.python.keras.layers.advanced_activations import Softmax
 from tensorflow.python.keras.layers.embeddings import Embedding
 from tqdm import tqdm, trange
 
-from abbreviations import ABBREVIATIONS
-from preprocess_corpus import (clean_text, get_document_embeddings,
+from preprocess_corpus import (clean_text, get_word2vec_doc_embeddings,
                                pad_encoded_docs)
 
 
@@ -24,7 +23,6 @@ class IOEmbedding(tf.keras.layers.Layer):
                  name=None):
         super(IOEmbedding, self).__init__(name=name)
 
-        self.ABBREVIATIONS = ABBREVIATIONS
         self.MAX_SEQUENCE_LENGTH = MAX_SEQUENCE_LENGTH
         self.EMBEDDINGS_DIMENSION = EMBEDDINGS_DIMENSION
         self.document_positional_embeddedings = self.get_positional_embeddings()
@@ -60,6 +58,13 @@ class IOEmbedding(tf.keras.layers.Layer):
         return tf.convert_to_tensor(positional_embeddings)
 
     def call(self, io_embedding_input):
+        if self.pretrained_embeddings is None:
+            tmep = self.embedding_layer(io_embedding_input)
+        elif self.pretrained_embeddings is "Word2Vec" or self.pretrained_embeddings is "Glove":
+            pass
+        else:
+            raise("Embeddings not supported")
+
         print("Adding Positional Embeddings...")
 
         final_embeddings = [
@@ -300,13 +305,13 @@ class Transformer(tf.keras.Model):
 
     def call(self, input_embeddings, output_embeddings=None):
         encoder_input = self.input_embeddings_layer(input_embeddings)
-        linear_output = encoder_output = self.encoder(encoder_input)
+        encoder_output = self.encoder(encoder_input)
 
-        # decoder_input = self.output_embeddings_layer(
-        #     output_embeddings)  # TODO: Russian embeddings
-        # decoder_output = self.decoder(decoder_input, encoder_output)
+        decoder_input = self.output_embeddings_layer(
+            output_embeddings)  # TODO: Russian embeddings
+        decoder_output = self.decoder(decoder_input, encoder_output)
 
-        # linear_output = self.linear(decoder_output)
+        linear_output = self.linear(decoder_output)
 
         print(np.array(linear_output).shape)
         return linear_output
@@ -338,11 +343,11 @@ def main():
     # Abbreviations causing problems in text repitition
     cleaned_target_corpus = clean_text(target_corpus)
 
-    for i, t in enumerate(target_corpus):
-        print(i, t)
+    for i, (s, t) in enumerate(zip(cleaned_source_corpus, cleaned_target_corpus)):
+        print(i, s, "<------>",  t)
 
     print("Fetching Document Embeddings...")
-    encoded_docs = get_document_embeddings(
+    encoded_docs = get_word2vec_doc_embeddings(
         cleaned_source_corpus, EMBEDDINGS_DIMENSION)
 
     print("Padding Document Embeddings...")
@@ -357,7 +362,7 @@ def main():
         name="transformer")
     transformer(
         input_embeddings=padded_encoded_source_docs,
-        # output_embeddings=target_corpus
+        output_embeddings=target_corpus
     )
 
 

@@ -21,12 +21,7 @@ setup(
     # install_requires=[
     #     "numpy", "pandas", "scikit-learn", "matplotlib",
     #     "tensorflow", "tensorflow-gpu",
-    #     "torch", "torchvision", "torchaudio", "keras", "gym"],
+    #     "torch", "torchvision", "torchaudio", "keras"],
 
-    # entry_points={
-    #     "console_scripts": [
-    #         "cartpole-qlearning-cli=reinforcement-learning.qlearning.main:cartpole"
-    #     ]
-    # },
 
 )

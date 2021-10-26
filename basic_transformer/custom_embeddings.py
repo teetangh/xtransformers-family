@@ -9,7 +9,7 @@ class GloveModel():
     def __init__():
         pass
 
+
 class Word2VecModel():
     def __init__():
         pass
-

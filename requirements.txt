@@ -1,7 +1,7 @@
 numpy
 pandas
-scikit-learn
 matplotlib
+scikit-learn
 keras
 tensorflow
 tensorflow-gpu

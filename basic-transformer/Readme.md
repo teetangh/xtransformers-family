@@ -2,7 +2,7 @@
 
 # Transformer Architecture
 
-![alt text](./images/Transformer-Model-Architecture.png "Title")
+![alt text](./images/Transformer-Model-Architecture.jpg "Title")
 
 The Transformer architecture consists of three parts:
 
